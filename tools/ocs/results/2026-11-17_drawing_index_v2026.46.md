@@ -2,17 +2,21 @@
 
 - Date: 2026-11-17 (Africa/Cairo), Google Cloud Shell, branch `feat/drawing-index`
 - Tester: OpenCode implementation agent
-- Result: **15/15 checks PASS (7 unit + 8 real binary), 3 consecutive runs**;
+- Result: **22/22 checks PASS (11 unit + 11 real binary), 2 consecutive runs**;
   REAL-BINARY INTEGRATION: VERIFIED. Milestone-1 smoke test re-run after the
   work: **15/15 steps PASS** (no regression); `test_safe_workdir.py` 6/6;
   `test_stale_revision.py` 4/4.
+- Review round 2 (Codex on `fc733ac`): two trust-contract gaps fixed — every
+  public accessor gated (incl. CLI `handles`, `entities()`, `summary()`) and
+  fail-closed rules for dirty/no-hash indexes with session identity checks.
+  See "Review round 2" at the end.
 
 ## What was built
 
 | File | Role |
 |---|---|
 | `tools/ocs/drawing_index.py` | Read/index layer: builds an index of an existing DXF through the real `--serve` channel (reuses milestone-1 `Serve`), answers deterministic queries with staleness gates. CLI: `index` / `query`. |
-| `tools/ocs/test_drawing_index.py` | Verification suite: U1–U7 (canned replies, no process) + R1–R8 (real pinned binary). Missing binary ⇒ real checks report SKIP and the verdict says integration was NOT verified. |
+| `tools/ocs/test_drawing_index.py` | Verification suite: U1–U11 (canned replies, no process) + R1–R11 (real pinned binary). Missing binary ⇒ real checks report SKIP and the verdict says integration was NOT verified. |
 
 Design rules honored: reads only (no entity mutation in the index path);
 `Serve.mutate()` inherited unchanged (one send, `StaleStateError` on stale —
@@ -156,3 +160,70 @@ rebuild, `entity(handle)` reported the new color.
   exercised (same scope as milestone 1; fixture contains none of these).
 - GUI (`--mcp`), assistant panel, viewport capture: out of scope here, still
   on the workstation list (headless `--serve` only).
+
+## Review round 2 (Codex on `fc733ac`) — fixes and evidence
+
+Codex raised two trust-contract gaps; both fixed on this branch before merge.
+
+**Gap 1 — unchecked public accessors.** `entities()`, `summary()` and the CLI
+`handles` form exposed drawing facts without passing the freshness gate.
+
+Fix: `entities()`/`summary()` now take the optional live context and gate;
+the CLI `handles` form routes through the gated `entities()` (file-hash
+check; exit 3 on refusal). New U8 is a reflective regression guard: the set
+of public accessors is compared against an explicit gated list (exempt:
+`check_fresh`, `to_json`, `to_json_dict`, `from_json`, and the raw `data`
+container, which exposes the stored snapshot itself, never an
+interpretation), then a patched `check_fresh` proves all 7 fact accessors
+raise instead of answering.
+
+New R9 (real binary): CLI index of a copy → `query --query handles` prints
+all 6 handles (exit 0) → the copy is changed THROUGH OCS (bounded edit +
+save) → the same `handles` query exits 3 with `STALE INDEX` naming both
+hashes; and all 7 python accessors (`entities`, `summary`, `count`,
+`count_by_type`, `count_by_layer`, `search_text`, `entity`) raise
+`IndexStaleError` on the changed file.
+
+**Gap 2 — fail-open indexes that disk cannot validate.** An index built from
+a dirty/unsaved OCS document (or with no readable source file/hash)
+contained live-session facts that only a hash of the file on disk guarded —
+insufficient. 
+
+Fix: `DrawingIndex.check_fresh` now treats `document_dirty=true` or
+`source_sha256=null` as live-REQUIRED. Every query on such an index must
+pass a live session context whose **session id**, **document identity**
+(registered path) and **document revision** all match the indexed ones;
+otherwise it refuses with the new `IndexUnverifiableError` (a subclass of
+`IndexStaleError`, so the CLI exits 3 with an `UNVERIFIABLE INDEX` banner
+and the reason). Session identity is verified on ALL live checks — even for
+file-anchored indexes — because document ids and revision counters are
+per-session. The optional live context for clean file-backed indexes keeps
+its no-false-staleness behavior when the document is simply closed (file
+hash already verified). New U9/U10 pin the dirty/no-hash rules against
+canned replies (no-context / other-session / closed-document /
+diverged-revision all refuse; matching session answers); U11 pins the
+session-identity check for clean indexes; R10/R11 repeat both rules on the
+real binary:
+
+- R10 (real): open a copy → unsaved `entities_set` → `index_document`
+  records `document_dirty=true`, revision 1, file hash unchanged →
+  `count(srv, doc)` answers 6 (live-verified) → `count()` refuses
+  ("unsaved in-session document… no live session context") → document
+  closed with `discard:true` (dropping the test's own unsaved edit; file
+  re-verified unchanged) → `count(srv, doc)` refuses ("no longer open").
+- R11 (real): `new` + `index_document` on the empty in-memory document
+  (`document_dirty=false`, `source_sha256=null` — isolating the no-hash
+  rule) → live-verified `count` answers 0 → `count()` refuses
+  ("no readable source file/hash") → after `close`, `count(srv, doc)`
+  refuses ("no longer open").
+
+Exact results after the fixes:
+
+```
+$ python3 tools/ocs/test_drawing_index.py   → 22/22 checks PASS (unit 11/11, real 11/11), exit 0 (2 runs)
+$ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS, exit 0
+$ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed, exit 0
+$ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
+```
+
+No skips: the pinned binary was present for every real check.

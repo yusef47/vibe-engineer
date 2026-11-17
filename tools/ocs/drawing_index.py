@@ -24,22 +24,39 @@ What the index records (all facts exactly as returned by OCS):
   the pinned build (e.g. `file_identity` is advertised by `capabilities` but
   answers `unknown op`) is recorded with the exact reply.
 
-Deterministic queries over the index (pure local reads; optional live check):
+Deterministic queries over the index (all freshness-gated; optional live
+check that compares session id, document identity and revision):
 
 - `count()` — total indexed entity count;
 - `count_by_type()` / `count_by_layer()` — counts as recorded at index time;
 - `entity(handle)` — one entity with its recorded source/provenance;
+- `entities()` — all records (deep copies);
+- `summary()` — identity/counts/unknown summary;
 - `search_text(needle)` — substring search over recorded text values.
 
 Staleness and safety (the trust contract):
 
-- Every query first re-hashes the source file and refuses to answer when the
-  hash no longer matches the indexed one (raises `IndexStaleError` naming
-  old and new hashes). Re-reading/rebuilding happens ONLY through an explicit
-  new indexing operation (`build_index` / `index_document` / CLI `index`).
-- With a live session context (`srv=..., document_id=...`), queries also
-  compare the live document revision with the indexed revision and refuse on
-  mismatch — this catches unsaved in-session changes that a file hash cannot.
+- Every public query path passes the freshness gate before answering:
+  `count`, `count_by_type`, `count_by_layer`, `entity`, `search_text`,
+  `entities`, `summary`, and every CLI query form (including `handles`).
+  No accessor serves stale entity data.
+- File gate: the source file is re-hashed first; when the hash no longer
+  matches the indexed one the answer is refused (`IndexStaleError` naming
+  the old and new hashes). Re-reading/rebuilding happens ONLY through an
+  explicit new indexing operation (`build_index` / `index_document` /
+  CLI `index`).
+- Live gate: with a live session context (`srv=..., document_id=...`) the
+  live session id, the document identity (registered path) and the document
+  revision are all compared with the indexed ones; any mismatch refuses.
+  This catches unsaved in-session changes that a file hash cannot see.
+- Fail-closed indexes: an index built from an unsaved (dirty) OCS document
+  or one without a readable source file/hash (`source_sha256` null) carries
+  in-session facts that the disk cannot validate. Such indexes REQUIRE the
+  matching live session, document and revision for EVERY query and refuse
+  to answer otherwise (`IndexUnverifiableError`): no session context, a
+  different session, a closed document, or an unreadable session all
+  refuse with the reason. Only an explicit new indexing operation changes
+  what an index is anchored to.
 - The source is not modified while indexing: the file is hashed before and
   after the read pass and an index is refused if the hash changed. If the
   document was already open in the session (caller-owned), it is indexed but
@@ -125,6 +142,17 @@ class IndexStaleError(Exception):
             + " ".join(self.reasons)
             + " Rebuild only through an explicit new indexing operation."
         )
+
+
+class IndexUnverifiableError(IndexStaleError):
+    """A query was refused because the index's facts CANNOT be verified.
+
+    Raised for fail-closed indexes (built from an unsaved/dirty OCS
+    document, or without a readable source file/hash) when the matching
+    live session + document + revision required to validate them is
+    missing, closed, different, or unreadable. The CLI exits 3 for this
+    like any other refusal; programmatic callers can distinguish it from
+    positive staleness evidence."""
 
 
 class LiveCheckUnavailable(RuntimeError):
@@ -314,7 +342,9 @@ def _collect_document(srv: Serve, document_id, doc_entry: dict, state: dict,
             "type/layer are recorded verbatim as CAD data; they are NOT structural claims",
             "classification is null on every entity until an engineer confirms a label",
             "values OCS did not return are recorded as 'unknown'; nothing is invented",
-        ],
+        ] + (["this index requires the matching live session for every query "
+              "(built from an unsaved document or without a source file hash)"]
+             if (dirty or sha_before is None) else []),
         "ocs_file_identity": file_identity,
     }
 
@@ -406,15 +436,25 @@ class DrawingIndex:
     def __init__(self, data: dict):
         if data.get("schema") != SCHEMA:
             raise IndexIntegrityError(f"unsupported index schema {data.get('schema')!r}")
-        self.data = data
+        self._data = data
+
+    @property
+    def data(self) -> dict:
+        """Raw index container — for persistence/inspection only.
+
+        NOT a freshness-checked query: it exposes the snapshot exactly as
+        stored (the persisted JSON is the same artifact `from_json` loads).
+        Reading drawing facts through it bypasses the gate deliberately not
+        supported; use the query methods."""
+        return self._data
 
     # ---- persistence -----------------------------------------------------
     def to_json_dict(self) -> dict:
-        return self.data
+        return self._data
 
     def to_json(self, path: str) -> str:
         with open(path, "w", encoding="utf-8") as fh:
-            json.dump(self.data, fh, ensure_ascii=False, sort_keys=True, indent=1)
+            json.dump(self._data, fh, ensure_ascii=False, sort_keys=True, indent=1)
             fh.write("\n")
         return path
 
@@ -424,19 +464,41 @@ class DrawingIndex:
             return cls(json.load(fh))
 
     # ---- staleness gate --------------------------------------------------
+    def _live_required_reason(self) -> str | None:
+        """Why this index can only be validated by a matching live session."""
+        ocs_meta = self._data["ocs"]
+        if ocs_meta.get("document_dirty"):
+            return (f"this index was built from an unsaved in-session document "
+                    f"(document_dirty=true): its facts are anchored to live session "
+                    f"{ocs_meta.get('session_id')!r} / document {ocs_meta.get('document_id')} "
+                    f"at revision {ocs_meta.get('document_revision')}, which no disk "
+                    f"hash can validate")
+        if self._data["source"]["sha256"] is None:
+            return ("this index has no readable source file/hash (source_sha256=null): "
+                    f"its facts are anchored to live session "
+                    f"{ocs_meta.get('session_id')!r} / document {ocs_meta.get('document_id')}, "
+                    "which no disk artifact can validate")
+        return None
+
     def check_fresh(self, srv: Serve | None = None, document_id=None) -> list[str]:
         """Refuse (raise `IndexStaleError`) if the index no longer matches.
 
         Always: re-hash the source file when the index has one.
-        With `srv` + `document_id` (both or neither): also compare the live
-        document revision with the indexed revision. A closed document is not
-        staleness (the index describes the file on disk, whose hash was just
-        verified); the live check is then recorded as unavailable.
+        Fail-closed indexes (built from an unsaved/dirty document, or with
+        `source_sha256` null) additionally REQUIRE a live session context
+        (`srv` + `document_id`, both or neither) whose session id, document
+        identity and revision all match; anything else refuses with
+        `IndexUnverifiableError`.
+        For file-anchored indexes the live context is optional: when given,
+        the same session/document/revision comparison applies; a closed
+        document is not staleness (the index describes the file on disk,
+        whose hash was just verified) and is recorded as unavailable.
 
         Returns the list of checks actually performed (for honest reporting).
         """
         performed = []
-        src = self.data["source"]
+        live_required = self._live_required_reason()
+        src = self._data["source"]
         if src["sha256"] is None:
             performed.append("source_file_hash:unavailable (document has no file on disk)")
         else:
@@ -453,52 +515,79 @@ class DrawingIndex:
                     {"indexed_sha256": src["sha256"], "current_sha256": now})
         if (srv is None) != (document_id is None):
             raise ValueError("pass both srv and document_id (or neither)")
-        if srv is not None:
-            performed.append("live_document_revision")
-            state = srv.read({"protocol": 1, "op": "state"})
-            if not state.get("ok"):
-                raise LiveCheckUnavailable(f"live state read failed: {json.dumps(state)[:300]}")
-            entry = next((d for d in state.get("documents") or []
-                          if d.get("id") == document_id), None)
-            if entry is None:
-                performed.append("live_document_revision:unavailable (document closed; "
-                                 "file hash check still applied)")
-            else:
-                if src["path"] is not None and not _same_path(entry.get("path"), src["path"]):
-                    raise IndexStaleError(
-                        [f"live document {document_id} points at {entry.get('path')!r}, "
-                         f"not the indexed file {src['path']!r}"])
-                live_rev = entry.get("revision")
-                idx_rev = self.data["ocs"]["document_revision"]
-                if live_rev != idx_rev:
-                    raise IndexStaleError(
-                        [f"live document revision {live_rev} != indexed revision "
-                         f"{idx_rev}: the session changed the drawing after this "
-                         f"index was built"],
-                        {"indexed_revision": idx_rev, "live_revision": live_rev})
+        if srv is None:
+            if live_required:
+                raise IndexUnverifiableError(
+                    [f"no live session context was provided, but {live_required} — "
+                     "refusing to answer; re-index in the live session or pass "
+                     "srv=.../document_id=..."])
+            return performed
+        performed.append("live_session_identity")
+        state = srv.read({"protocol": 1, "op": "state"})
+        if not state.get("ok"):
+            message = f"live session could not be verified: state read failed: " \
+                      f"{json.dumps(state)[:300]}"
+            if live_required:
+                raise IndexUnverifiableError([message])
+            raise LiveCheckUnavailable(message)
+        ocs_meta = self._data["ocs"]
+        live_sid = state.get("session_id")
+        if live_sid != ocs_meta.get("session_id"):
+            raise IndexStaleError(
+                [f"live session {live_sid!r} != indexed session "
+                 f"{ocs_meta.get('session_id')!r}: the live context is not the "
+                 "session this index was built in (document ids and revision "
+                 "counters are per-session, so a cross-session comparison would "
+                 "be meaningless)"],
+                {"indexed_session_id": ocs_meta.get("session_id"),
+                 "live_session_id": live_sid})
+        entry = next((d for d in state.get("documents") or []
+                      if d.get("id") == document_id), None)
+        if entry is None:
+            if live_required:
+                raise IndexUnverifiableError(
+                    [f"the indexed document {document_id} is no longer open in the "
+                     f"live session, and {live_required} — there is nothing left "
+                     "that can validate this index's facts; refusing"])
+            performed.append("live_document_revision:unavailable (document closed; "
+                             "file hash check still applied)")
+            return performed
+        performed.append("live_document_revision")
+        if src["path"] is not None and not _same_path(entry.get("path"), src["path"]):
+            raise IndexStaleError(
+                [f"live document {document_id} points at {entry.get('path')!r}, "
+                 f"not the indexed file {src['path']!r}"])
+        live_rev = entry.get("revision")
+        idx_rev = ocs_meta["document_revision"]
+        if live_rev != idx_rev:
+            raise IndexStaleError(
+                [f"live document revision {live_rev} != indexed revision "
+                 f"{idx_rev}: the session changed the drawing after this "
+                 f"index was built"],
+                {"indexed_revision": idx_rev, "live_revision": live_rev})
         return performed
 
     # ---- deterministic queries -------------------------------------------
     def count(self, srv=None, document_id=None) -> int:
         self.check_fresh(srv, document_id)
-        return len(self.data["entities"])
+        return len(self._data["entities"])
 
     def count_by_type(self, srv=None, document_id=None) -> dict:
         self.check_fresh(srv, document_id)
-        return dict(self.data["counts"]["by_type"])
+        return dict(self._data["counts"]["by_type"])
 
     def count_by_layer(self, srv=None, document_id=None) -> dict:
         self.check_fresh(srv, document_id)
-        return dict(self.data["counts"]["by_layer"])
+        return dict(self._data["counts"]["by_layer"])
 
     def entity(self, handle, srv=None, document_id=None) -> dict:
         self.check_fresh(srv, document_id)
-        for rec in self.data["entities"]:
+        for rec in self._data["entities"]:
             if str(rec["handle"]) == str(handle):
                 return json.loads(json.dumps(rec))  # deep copy: caller can't mutate the index
         raise KeyError(
-            f"handle {handle!r} is not in this index (built {self.data['created_utc']} "
-            f"from {self.data['source']['path']!r} sha256 {self.data['source']['sha256']}); "
+            f"handle {handle!r} is not in this index (built {self._data['created_utc']} "
+            f"from {self._data['source']['path']!r} sha256 {self._data['source']['sha256']}); "
             "it may exist in the drawing but was not indexed — rebuild explicitly")
 
     def search_text(self, needle: str, *, case_sensitive: bool = False,
@@ -508,7 +597,7 @@ class DrawingIndex:
             raise ValueError("empty search needle")
         self.check_fresh(srv, document_id)
         hits = []
-        for rec in self.data["entities"]:
+        for rec in self._data["entities"]:
             value = (rec.get("text") or {}).get("value")
             if not isinstance(value, str):
                 continue  # no text recorded -> never matches, never guessed
@@ -518,18 +607,22 @@ class DrawingIndex:
         hits.sort(key=lambda r: str(r["handle"]))
         return hits
 
-    def entities(self) -> list[dict]:
-        return self.data["entities"]
+    def entities(self, srv=None, document_id=None) -> list[dict]:
+        """All indexed entity records (deep copies), freshness-gated."""
+        self.check_fresh(srv, document_id)
+        return json.loads(json.dumps(self._data["entities"]))
 
-    def summary(self) -> dict:
-        return {
-            "schema": self.data["schema"],
-            "created_utc": self.data["created_utc"],
-            "source": self.data["source"],
-            "ocs": self.data["ocs"],
-            "counts": self.data["counts"],
-            "unknown": self.data["unknown"],
-        }
+    def summary(self, srv=None, document_id=None) -> dict:
+        """Index summary (counts and identity), freshness-gated."""
+        self.check_fresh(srv, document_id)
+        return json.loads(json.dumps({
+            "schema": self._data["schema"],
+            "created_utc": self._data["created_utc"],
+            "source": self._data["source"],
+            "ocs": self._data["ocs"],
+            "counts": self._data["counts"],
+            "unknown": self._data["unknown"],
+        }))
 
 
 # ---- CLI -------------------------------------------------------------------
@@ -610,6 +703,14 @@ def cmd_query(args, parser) -> int:
         else:
             parser.error("--query must be count | types | layers | handles | "
                          "handle:<H> | text:<STR>")
+    except IndexUnverifiableError as e:
+        print(f"UNVERIFIABLE INDEX — refusing to answer from {args.index}", file=sys.stderr)
+        for r in e.reasons:
+            print(f"  reason: {r}", file=sys.stderr)
+        print("  rebuild only through an explicit new indexing operation:", file=sys.stderr)
+        print("    python3 tools/ocs/drawing_index.py index --file <drawing> --json <index>",
+              file=sys.stderr)
+        return 3
     except IndexStaleError as e:
         print(f"STALE INDEX — refusing to answer from {args.index}", file=sys.stderr)
         for r in e.reasons:

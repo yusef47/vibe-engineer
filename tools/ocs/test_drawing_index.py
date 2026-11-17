@@ -3,23 +3,28 @@
 
 Checks the `drawing_index` module in two tiers:
 
-- UNIT (U1–U8): canned `--serve` replies (no OCS process) prove normalization
+- UNIT (U1–U11): canned `--serve` replies (no OCS process) prove normalization
   (verbatim facts, explicit "unknown" sentinel, no invented fields), the
   deterministic queries, the file-hash staleness gate, the live-revision
-  staleness gate, count integrity, JSON round-trip, and the closed-document
-  false-positive guard.
-- REAL BINARY (R1–R8): the pinned OpenCADStudio build, headless. A synthetic
+  staleness gate, count integrity, JSON round-trip, the closed-document
+  false-positive guard, freshness-gate coverage of EVERY public accessor,
+  and the fail-closed rules for indexes that disk cannot validate (built
+  from an unsaved/dirty document, or without a source file/hash): such
+  indexes require the matching live session + document + revision and
+  refuse otherwise.
+- REAL BINARY (R1–R11): the pinned OpenCADStudio build, headless. A synthetic
   fixture is produced by the milestone-1 tooling (`ocs_smoke_test.py`) and
   indexed through `--serve`; the index is cross-checked against a fresh live
   query of the same file; a copy is changed THROUGH OCS and the old index
-  must refuse to answer (file-hash staleness); an unsaved in-session edit
-  must be caught by the live revision check; unsupported API surface
-  (`file_identity`) must be recorded; no structural classification may be
-  invented.
+  must refuse to answer (file-hash staleness, including the CLI `handles`
+  form with exit 3); an unsaved in-session edit must be caught by the live
+  revision check; unsupported API surface (`file_identity`) must be
+  recorded; no structural classification may be invented; dirty and
+  no-hash indexes must fail closed on the real binary too.
 
 If the pinned binary is missing, every real-binary check reports SKIP and the
 final verdict states that real integration was NOT verified. SKIP is never
-presented as proof; only R1–R8 passing against the real binary is.
+presented as proof; only R1–R11 passing against the real binary is.
 
 Exit code 0 iff no check FAILED. Run: `python3 tools/ocs/test_drawing_index.py`.
 """
@@ -298,6 +303,190 @@ def unit_closed_document_no_false_stale() -> str:
         return f"closed doc -> live check skipped honestly, file hash still checked {performed}"
 
 
+class GateSentinel(Exception):
+    """Raised by a patched check_fresh to prove accessors route through it."""
+
+
+def unit_all_accessors_gated() -> str:
+    """No public accessor may answer stale entity data: every fact-reading
+    method must route through `check_fresh`. Persistence helpers (`to_json`,
+    `to_json_dict`, `from_json`) and the raw `data` container are exempt —
+    they move the snapshot, they do not interpret it; the persisted file is
+    freshness-checked when loaded for queries."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = make_tmp_drawing(tmp)
+        canned = {"ok": True, "count": 3, "entities": CANNED, "next_offset": None}
+        idx = di.build_index(FakeServe(fake_state(src), canned), src)
+        calls = {
+            "count": lambda: idx.count(),
+            "count_by_type": lambda: idx.count_by_type(),
+            "count_by_layer": lambda: idx.count_by_layer(),
+            "entity": lambda: idx.entity("86"),
+            "search_text": lambda: idx.search_text("hello"),
+            "entities": lambda: idx.entities(),
+            "summary": lambda: idx.summary(),
+        }
+        exempt = {"check_fresh", "to_json", "to_json_dict", "from_json", "data"}
+        public = {m for m in dir(type(idx))
+                  if not m.startswith("_") and m not in exempt
+                  and callable(getattr(type(idx), m, None))}
+        assert public == set(calls), \
+            f"public accessor list changed; gate every fact-reading method: " \
+            f"uncovered={sorted(public - set(calls))} extra={sorted(set(calls) - public)}"
+        original = di.DrawingIndex.check_fresh
+
+        def boom(self, srv=None, document_id=None):
+            raise GateSentinel("gate bypassed")
+
+        try:
+            di.DrawingIndex.check_fresh = boom
+            for name, call in calls.items():
+                try:
+                    call()
+                except GateSentinel:
+                    pass
+                else:
+                    raise AssertionError(f"{name} answered without the freshness gate")
+        finally:
+            di.DrawingIndex.check_fresh = original
+        # sanity: with the gate restored, the same calls answer again
+        assert idx.count() == 3 and len(idx.entities()) == 3 and idx.summary()["counts"]
+        return f"all {len(calls)} public accessors route through check_fresh " \
+               f"(exempt: {sorted(exempt)})"
+
+
+def build_dirty_index() -> tuple:
+    """Index built from a document the fake session reports as dirty."""
+    tmp = tempfile.mkdtemp()
+    src = make_tmp_drawing(tmp)
+    canned = {"ok": True, "count": 3, "entities": CANNED, "next_offset": None}
+    state = fake_state(src, revision=1)
+    state["documents"][0]["dirty"] = True
+    idx = di.build_index(FakeServe(state, canned), src)
+    assert idx.data["ocs"]["document_dirty"] is True
+    assert idx.data["source"]["sha256"] is not None
+    return idx, src, tmp
+
+
+def build_nofile_index() -> tuple:
+    """Index built from an unsaved document (no path, no hash)."""
+    tmp = tempfile.mkdtemp()
+    canned = {"ok": True, "count": 3, "entities": CANNED, "next_offset": None}
+    state = fake_state(None, revision=0)  # documents[0].path=None
+    idx = di.index_document(FakeServe(state, canned), 1)
+    assert idx.data["source"]["sha256"] is None
+    return idx, tmp
+
+
+def unit_dirty_index_requires_live() -> str:
+    idx, src, tmp = build_dirty_index()
+    canned = {"ok": True, "count": 3, "entities": CANNED, "next_offset": None}
+
+    def dirty_state(revision=1, session="fake-session", documents=None):
+        st = fake_state(src, revision=revision, documents=documents)
+        st["session_id"] = session
+        if documents is None:
+            st["documents"][0]["dirty"] = True
+        return st
+
+    try:
+        # 1) no live context -> refuse, clearly
+        try:
+            idx.count()
+        except di.IndexUnverifiableError as e:
+            assert "unsaved in-session document" in str(e), e
+            assert "no live session context" in str(e), e
+        else:
+            raise AssertionError("dirty index answered without a live session")
+        # 2) matching live session + document + revision -> answer
+        ok_srv = FakeServe(dirty_state(revision=1), canned)
+        assert idx.count(srv=ok_srv, document_id=1) == 3
+        assert idx.entities(srv=ok_srv, document_id=1)[0]["type"] == "Line"
+        # 3) different session -> refuse (identity, not just revision)
+        try:
+            idx.count(srv=FakeServe(dirty_state(session="someone-elses-session"), canned),
+                      document_id=1)
+        except di.IndexStaleError as e:
+            assert "live session 'someone-elses-session' != indexed session" in str(e), e
+        else:
+            raise AssertionError("dirty index accepted a different session")
+        # 4) document closed -> refuse (nothing can validate the facts)
+        try:
+            idx.count(srv=FakeServe(dirty_state(documents=[]), canned), document_id=1)
+        except di.IndexUnverifiableError as e:
+            assert "no longer open" in str(e), e
+        else:
+            raise AssertionError("dirty index answered with its document closed")
+        # 5) revision diverged -> refuse
+        try:
+            idx.count(srv=FakeServe(dirty_state(revision=2), canned), document_id=1)
+        except di.IndexStaleError as e:
+            assert "live document revision 2 != indexed revision 1" in str(e), e
+        else:
+            raise AssertionError("dirty index answered after a further edit")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)  # test-owned temp dir only
+    return ("no ctx / other session / closed doc / diverged rev all refuse; "
+            "matching live session answers")
+
+
+def unit_nofile_index_requires_live() -> str:
+    idx, tmp = build_nofile_index()
+    try:
+        canned = {"ok": True, "count": 3, "entities": CANNED, "next_offset": None}
+        # 1) no live context -> refuse, clearly
+        try:
+            idx.summary()
+        except di.IndexUnverifiableError as e:
+            assert "no readable source file/hash" in str(e), e
+        else:
+            raise AssertionError("no-file index answered without a live session")
+        # 2) matching live session -> answer
+        ok_srv = FakeServe(fake_state(None, revision=0), canned)
+        assert idx.count(srv=ok_srv, document_id=1) == 3
+        # 3) different session -> refuse
+        other = fake_state(None, revision=0)
+        other["session_id"] = "someone-elses-session"
+        try:
+            idx.entities(srv=FakeServe(other, canned), document_id=1)
+        except di.IndexStaleError as e:
+            assert "live session 'someone-elses-session' != indexed session" in str(e), e
+        else:
+            raise AssertionError("no-file index accepted a different session")
+        # 4) document closed -> refuse
+        closed = fake_state(None, revision=0, documents=[])
+        try:
+            idx.count(srv=FakeServe(closed, canned), document_id=1)
+        except di.IndexUnverifiableError as e:
+            assert "no longer open" in str(e), e
+        else:
+            raise AssertionError("no-file index answered with its document closed")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)  # test-owned temp dir only
+    return "no ctx / other session / closed doc refuse; matching live session answers"
+
+
+def unit_clean_index_live_checks_session_identity() -> str:
+    """Even for a file-anchored index, a requested live check that lands on a
+    different session is refused: document ids and revision counters are
+    per-session, so the comparison would be meaningless. The file-hash-only
+    path still answers (the index describes the file on disk)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = make_tmp_drawing(tmp)
+        canned = {"ok": True, "count": 3, "entities": CANNED, "next_offset": None}
+        idx = di.build_index(FakeServe(fake_state(src), canned), src)
+        other = fake_state(src)
+        other["session_id"] = "someone-elses-session"
+        try:
+            idx.count(srv=FakeServe(other, canned), document_id=1)
+        except di.IndexStaleError as e:
+            assert "live session 'someone-elses-session' != indexed session" in str(e), e
+        else:
+            raise AssertionError("live check accepted a different session")
+        assert idx.count() == 3  # file-hash-only answer is unaffected
+        return "session identity verified on live checks; file-only path unaffected"
+
+
 # ---- real-binary tier -------------------------------------------------------
 EXE = os.path.abspath(os.path.expanduser(
     os.environ.get("OCS_APPIMAGE") or ocs.DEFAULT_EXE))
@@ -526,6 +715,139 @@ def real_no_structural_claims(idx, fixture) -> str:
     return f"{len(recs)} records: classification null, type/layer verbatim, policy noted"
 
 
+def ocs_change_color(base: str, path: str, color: int) -> str:
+    """Change one entity through OCS (bounded edit + save) and return its handle."""
+    srv = ocs.Serve(EXE, stderr_path=os.path.join(base, "ocs_stderr.log"))
+    try:
+        srv.mutate({"op": "open", "path": path}, None, None)
+        st = srv.read({"protocol": 1, "op": "state"})
+        doc, rev = st["document_id"], st["revision"]
+        idx = di.index_document(srv, doc)
+        circ = next(r for r in idx.entities() if r["type"] == "Circle")
+        r = srv.mutate({"op": "entities_set", "handles": [circ["handle"]], "color": color},
+                       doc, rev)
+        assert r.get("ok") and (r.get("result") or {}).get("written") == 1, r
+        r = srv.mutate({"op": "save"}, doc, None)
+        assert r.get("ok"), r
+        srv.mutate({"op": "close"}, doc, None)
+        return circ["handle"]
+    finally:
+        srv.close()
+
+
+def real_cli_handles_refusal(base: str, fixture: str, fixture_sha: str) -> str:
+    """Regression for review item 1: the CLI `handles` form must pass the
+    freshness gate — after the source changed, exit 3 with the reason."""
+    require_real()
+    copy3 = os.path.join(base, "cli_handles.dxf")
+    shutil.copy2(fixture, copy3)
+    assert di.sha256_file(copy3) == fixture_sha
+    idx_json = os.path.join(base, "cli_handles_index.json")
+    cli = [sys.executable, os.path.join(HERE, "drawing_index.py")]
+    r = subprocess.run(cli + ["index", "--file", copy3, "--json", idx_json],
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout[-500:] + r.stderr[-500:]
+    r = subprocess.run(cli + ["query", "--index", idx_json, "--query", "handles"],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout[-500:] + r.stderr[-500:]
+    handles_fresh = r.stdout.split()
+    assert len(handles_fresh) == 6, r.stdout
+
+    handle = ocs_change_color(base, copy3, 2)     # change the COPY through OCS
+    new_sha = di.sha256_file(copy3)
+    assert new_sha != fixture_sha, "OCS edit+save did not change the copy"
+
+    r = subprocess.run(cli + ["query", "--index", idx_json, "--query", "handles"],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 3, (r.returncode, r.stdout[-300:], r.stderr[-300:])
+    assert "STALE INDEX" in r.stderr, r.stderr
+    assert fixture_sha in r.stderr and new_sha in r.stderr, r.stderr
+    # and the equivalent python accessors refuse the same way
+    idx = di.DrawingIndex.from_json(idx_json)
+    calls = [idx.entities, idx.summary, idx.count, idx.count_by_type,
+             idx.count_by_layer, lambda: idx.search_text("SMOKE"),
+             lambda: idx.entity(handle)]
+    for call in calls:
+        try:
+            call()
+        except di.IndexStaleError:
+            pass
+        else:
+            raise AssertionError("a public accessor answered after the file changed")
+    return (f"CLI handles: 6 answers fresh -> exit 3 after OCS change "
+            f"({fixture_sha[:8]}.. -> {new_sha[:8]}..); all 7 accessors refuse")
+
+
+def real_dirty_index_fail_closed(base: str, fixture: str, fixture_sha: str) -> str:
+    """Regression for review item 2 (dirty index) on the real binary."""
+    require_real()
+    copy4 = os.path.join(base, "dirty_failclosed.dxf")
+    shutil.copy2(fixture, copy4)
+    srv = ocs.Serve(EXE, stderr_path=os.path.join(base, "ocs_stderr.log"))
+    try:
+        srv.mutate({"op": "open", "path": copy4}, None, None)
+        st = srv.read({"protocol": 1, "op": "state"})
+        doc = st["document_id"]
+        idx0 = di.index_document(srv, doc)
+        circ = next(r["handle"] for r in idx0.entities() if r["type"] == "Circle")
+        r = srv.mutate({"op": "entities_set", "handles": [circ], "color": 4}, doc, 0)
+        assert r.get("ok"), r                      # unsaved edit: dirty, revision 1
+        idx = di.index_document(srv, doc)          # index the DIRTY document
+        assert idx.data["ocs"]["document_dirty"] is True
+        assert idx.data["ocs"]["document_revision"] == 1
+        assert di.sha256_file(copy4) == fixture_sha  # disk cannot validate the facts
+        assert idx.count(srv=srv, document_id=doc) == 6  # live-verified answer works
+        try:
+            idx.count()
+        except di.IndexUnverifiableError as e:
+            assert "unsaved in-session document" in str(e), e
+        else:
+            raise AssertionError("dirty index answered without a live session")
+        srv.mutate({"op": "close", "discard": True}, doc, None)  # drop OUR unsaved edit
+        assert di.sha256_file(copy4) == fixture_sha  # the file was never touched
+        try:
+            idx.count(srv=srv, document_id=doc)
+        except di.IndexUnverifiableError as e:
+            assert "no longer open" in str(e), e
+        else:
+            raise AssertionError("dirty index answered after its document was closed")
+        return ("dirty index: live-verified 6; no-context refused; closed-document "
+                "refused (file hash never changed)")
+    finally:
+        srv.close()
+
+
+def real_nofile_index_fail_closed(base: str) -> str:
+    """Regression for review item 2 (no source hash) on the real binary."""
+    require_real()
+    srv = ocs.Serve(EXE, stderr_path=os.path.join(base, "ocs_stderr.log"))
+    try:
+        srv.send({"op": "new"})
+        st = srv.read({"protocol": 1, "op": "state"})
+        doc = st["document_id"]            # empty in-memory doc: not dirty, path None
+        idx = di.index_document(srv, doc)
+        assert idx.data["source"]["sha256"] is None
+        assert idx.data["ocs"]["document_dirty"] is False  # isolates the no-hash rule
+        assert idx.count(srv=srv, document_id=doc) == 0    # live-verified answer works
+        try:
+            idx.count()
+        except di.IndexUnverifiableError as e:
+            assert "no readable source file/hash" in str(e), e
+        else:
+            raise AssertionError("no-hash index answered without a live session")
+        srv.mutate({"op": "close"}, doc, None)   # clean doc: plain close accepted
+        try:
+            idx.count(srv=srv, document_id=doc)
+        except di.IndexUnverifiableError as e:
+            assert "no longer open" in str(e), e
+        else:
+            raise AssertionError("no-hash index answered after its document was closed")
+        return ("no-hash index: live-verified answer ok; no-context and "
+                "closed-document refused")
+    finally:
+        srv.close()
+
+
 def main() -> int:
     print(f"real binary: {EXE} -> "
           f"{'PRESENT' if REAL_OK else 'MISSING (real checks will SKIP)'}")
@@ -547,6 +869,14 @@ def main() -> int:
           unit_counts_integrity_and_roundtrip)
     check("U7 unit: closed document is not false staleness (live check unavailable, "
           "not stale)", unit_closed_document_no_false_stale)
+    check("U8 unit: every public accessor routes through the freshness gate",
+          unit_all_accessors_gated)
+    check("U9 unit: dirty index requires matching live session (no ctx / other "
+          "session / closed doc / diverged rev refuse)", unit_dirty_index_requires_live)
+    check("U10 unit: no-source-hash index requires matching live session",
+          unit_nofile_index_requires_live)
+    check("U11 unit: live checks verify session identity even for file-anchored "
+          "indexes", unit_clean_index_live_checks_session_identity)
 
     ctx: dict = {}
 
@@ -593,6 +923,17 @@ def main() -> int:
         need_r3()
         return real_no_structural_claims(ctx["idx"], ctx["fixture"])
 
+    def r9() -> str:
+        need_r3()
+        return real_cli_handles_refusal(base, ctx["fixture"], ctx["sha"])
+
+    def r10() -> str:
+        need_r3()
+        return real_dirty_index_fail_closed(base, ctx["fixture"], ctx["sha"])
+
+    def r11() -> str:
+        return real_nofile_index_fail_closed(base)
+
     check("R1 real: pinned OpenCADStudio binary answers --version", r1)
     check("R2 real: synthetic fixture produced by milestone-1 tooling (smoke test PASS)",
           r2)
@@ -605,6 +946,10 @@ def main() -> int:
           "rebuild accepted", r6)
     check("R7 real: advertised-but-unimplemented op recorded as unsupported", r7)
     check("R8 real: no structural classification invented; type/layer stay CAD data", r8)
+    check("R9 real: CLI handles refuses after an OCS change (exit 3); "
+          "all public accessors refuse", r9)
+    check("R10 real: dirty (unsaved) index fails closed on the real binary", r10)
+    check("R11 real: no-source-hash index fails closed on the real binary", r11)
 
     unit = [(n, ok) for n, ok, _ in results if n.startswith("U")]
     real = [(n, ok) for n, ok, _ in results if n.startswith("R")]

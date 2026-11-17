@@ -21,9 +21,10 @@ Updated: 2026-11-17 (Africa/Cairo)
   staleness gates: the source-file hash and the live document revision.
   Evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`;
   reproduction: `tools/ocs/README.md` (milestone-2 section).
-  15/15 checks pass (7 unit + 8 real binary) in 3 consecutive runs;
-  REAL-BINARY INTEGRATION: VERIFIED. Codex review is the next gate
-  (branch pushed, not merged).
+  After Codex review of `fc733ac`, two trust-contract gaps were fixed
+  (see "Milestone 2 review round 2" below): 22/22 checks pass (11 unit +
+  11 real binary); REAL-BINARY INTEGRATION: VERIFIED. Codex review of the
+  fix commit is the next gate (branch pushed, not merged).
 - The GitHub repository is public (`https://github.com/yusef47/vibe-engineer`).
   Access works through the repository-scoped SSH deploy key
   (`~/.ssh/vibe_engineer_deploy`, never committed) via the `github-vibe` SSH
@@ -37,13 +38,13 @@ Updated: 2026-11-17 (Africa/Cairo)
 All commands and exact outputs: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`.
 
 ```
-$ python3 tools/ocs/test_drawing_index.py   → 15/15 checks PASS (unit 7/7, real 8/8), exit 0
+$ python3 tools/ocs/test_drawing_index.py   → 22/22 checks PASS (unit 11/11, real 11/11), exit 0
 $ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS (regression check after the work)
 $ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed
 $ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed
 ```
 
-Proven (R1–R8, real pinned OCS v2026.46, headless):
+Proven (R1–R11, real pinned OCS v2026.46, headless):
 
 - R1 the binary is the pinned release (SHA-256 asserted against the pinned digest).
 - R2 the fixture is produced by the milestone-1 tooling itself (the test runs
@@ -69,11 +70,45 @@ Proven (R1–R8, real pinned OCS v2026.46, headless):
   plain passive sends only — indexing leaves the document rev 0, dirty=False.)
 - R8 no structural classification exists anywhere in the index
   (`classification: null` on every record; type/layer verbatim).
+- R9 the CLI `handles` form (and every other public accessor) refuses after
+  the source changed through OCS: exit 3 with both hashes named; U8 is the
+  reflective guard proving all 7 fact accessors route through the gate.
+- R10 an index built from an unsaved (dirty) document fails closed on the
+  real binary: answers only with the matching live session + document +
+  revision; no-context, closed-document and different-session cases refuse.
+- R11 an index without a readable source file/hash fails closed the same way.
 
 Deterministic queries (CLI, no OCS needed for `query`): `count`, `types`,
 `layers`, `handles`, `handle:<H>` (full record + provenance), `text:<STR>`
 (substring over recorded text values only; unknown type/missing text never
-guessed). `query` exit codes: 0 answered, 3 stale-refusal, 2 usage.
+guessed). `query` exit codes: 0 answered, 3 stale-or-unverifiable refusal,
+2 usage.
+
+## Milestone 2 review round 2 (Codex on `fc733ac`)
+
+Two trust-contract gaps were raised and fixed on this branch:
+
+1. **Every public query path gated.** `entities()`, `summary()` and the CLI
+   `handles` form used to expose drawing facts without the freshness gate.
+   They now take the optional live context and gate like the other
+   accessors; U8 reflectively pins the public surface (exempt: persistence
+   helpers `to_json`/`to_json_dict`/`from_json` and the raw `data`
+   container) and proves a patched gate makes every accessor refuse instead
+   of answering. R9 proves the CLI regression end-to-end against the real
+   binary (fresh 6-handle answer → OCS change → exit 3 with both hashes).
+2. **Fail-closed indexes that disk cannot validate.** An index built from a
+   dirty/unsaved OCS document or with `source_sha256=null` now REQUIRES the
+   matching live session, document and revision for EVERY query (session
+   identity checked too — document ids and revision counters are
+   per-session). Missing/closed/different/unreadable session context
+   refuses with `IndexUnverifiableError` (subclass of `IndexStaleError`;
+   CLI prints `UNVERIFIABLE INDEX`, exit 3). Clean file-anchored indexes
+   keep their semantics: optional live check, closed document is not false
+   staleness (U7 still passes), and the file hash remains the base gate.
+   U9/U10 pin the unit behavior, R10/R11 repeat it on the real binary.
+
+Recovery path unchanged: explicit new indexing operations only
+(`drawing_index.py index`, `build_index()`, `index_document()`).
 
 ## Review fixes (Codex review of milestone-1 `15aa6d0`, merged in PR #1)
 

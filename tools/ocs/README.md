@@ -57,6 +57,14 @@ drawing index built (vibe-engineer/drawing-index@1)
 
 ### Staleness and safety (what the tests prove)
 
+- **Every accessor is gated.** All public query paths — `count`,
+  `count_by_type`, `count_by_layer`, `entity`, `search_text`, `entities`,
+  `summary`, and every CLI query form including `handles` — pass the
+  freshness gate before answering; a regression test patches the gate and
+  proves no accessor can answer without it. Only the persistence helpers
+  (`to_json`/`to_json_dict`/`from_json`) and the raw `data` container are
+  exempt: they move or expose the stored snapshot itself, they never
+  interpret it; a loaded index is gate-checked when queried.
 - **File staleness.** Every query re-hashes the source file first. After the
   drawing is changed through OCS (or by any other means), every query form
   refuses with exit code 3, naming the indexed and current hashes and the
@@ -64,8 +72,20 @@ drawing index built (vibe-engineer/drawing-index@1)
   an explicit new indexing operation (`drawing_index.py index` /
   `build_index()` / `index_document()`).
 - **Live staleness.** With a live session context (`srv=…, document_id=…`),
-  queries also compare the live document revision with the indexed one. An
-  unsaved in-session edit (which the file hash cannot see) is refused.
+  queries compare the live session id, the document identity (registered
+  path) and the document revision with the indexed ones; any mismatch
+  refuses. An unsaved in-session edit (which the file hash cannot see) is
+  refused; a different session is refused too (document ids and revision
+  counters are per-session, so a cross-session comparison would be
+  meaningless).
+- **Fail-closed indexes.** An index built from an unsaved (dirty) OCS
+  document, or one without a readable source file/hash (`source_sha256`
+  null), carries in-session facts that the disk cannot validate. Such an
+  index REQUIRES the matching live session, document and revision for every
+  query and refuses otherwise (`IndexUnverifiableError`, CLI exit 3): no
+  session context, a different session, a closed document, or an unreadable
+  session all refuse with the reason. Verified on the real binary (a dirty
+  index answers only while its document is open in the anchoring session).
 - **Read-only indexing.** The source is hashed before and after the read
   pass; a hash change aborts indexing with no index produced. Documents the
   caller already had open are indexed but never closed by this layer; a
