@@ -13,7 +13,7 @@ This repository is shared between the founder, Codex, and OpenCode. Read `README
 ## Development environment
 
 - Primary development happens in Google Cloud Shell with OpenCode. Cloud Shell has about 5 GB persistent home storage; keep caches and downloads small.
-- GitHub repository: `https://github.com/yusef47/vibe-engineer` (private).
+- GitHub repository: `https://github.com/yusef47/vibe-engineer` (public; push access via the repository-scoped SSH deploy key, which is never committed).
 - Do not commit API keys, credentials, customer drawings, or generated CAD outputs. Use local environment variables or ignored `.env` files.
 - Prefer the documented Open CAD Studio automation endpoint over a source fork. Pin a version for reproducible tests and document observed behavior.
 - Cloud Shell is a headless environment. Test headless CAD automation there first; interactive desktop integration must be verified later on a machine with a GUI.
