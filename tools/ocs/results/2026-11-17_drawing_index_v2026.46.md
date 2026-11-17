@@ -2,7 +2,7 @@
 
 - Date: 2026-11-17 (Africa/Cairo), Google Cloud Shell, branch `feat/drawing-index`
 - Tester: OpenCode implementation agent
-- Result: **22/22 checks PASS (11 unit + 11 real binary), 2 consecutive runs**;
+- Result: **23/23 checks PASS (12 unit + 11 real binary), 2 consecutive runs**;
   REAL-BINARY INTEGRATION: VERIFIED. Milestone-1 smoke test re-run after the
   work: **15/15 steps PASS** (no regression); `test_safe_workdir.py` 6/6;
   `test_stale_revision.py` 4/4.
@@ -10,13 +10,17 @@
   public accessor gated (incl. CLI `handles`, `entities()`, `summary()`) and
   fail-closed rules for dirty/no-hash indexes with session identity checks.
   See "Review round 2" at the end.
+- Review round 3 (Codex on `3afb678`/`7439fcd`): a live check could be
+  accepted against a DIFFERENT document in the same session at the same
+  revision — the stored `ocs.document_id` was never compared with the
+  supplied one. Fixed; new U12. See "Review round 3" at the end.
 
 ## What was built
 
 | File | Role |
 |---|---|
 | `tools/ocs/drawing_index.py` | Read/index layer: builds an index of an existing DXF through the real `--serve` channel (reuses milestone-1 `Serve`), answers deterministic queries with staleness gates. CLI: `index` / `query`. |
-| `tools/ocs/test_drawing_index.py` | Verification suite: U1–U11 (canned replies, no process) + R1–R11 (real pinned binary). Missing binary ⇒ real checks report SKIP and the verdict says integration was NOT verified. |
+| `tools/ocs/test_drawing_index.py` | Verification suite: U1–U12 (canned replies, no process) + R1–R11 (real pinned binary). Missing binary ⇒ real checks report SKIP and the verdict says integration was NOT verified. |
 
 Design rules honored: reads only (no entity mutation in the index path);
 `Serve.mutate()` inherited unchanged (one send, `StaleStateError` on stale —
@@ -220,10 +224,32 @@ real binary:
 Exact results after the fixes:
 
 ```
-$ python3 tools/ocs/test_drawing_index.py   → 22/22 checks PASS (unit 11/11, real 11/11), exit 0 (2 runs)
+$ python3 tools/ocs/test_drawing_index.py   → 23/23 checks PASS (unit 12/12, real 11/11), exit 0 (2 runs)
 $ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS, exit 0
 $ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed, exit 0
 $ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
 ```
 
 No skips: the pinned binary was present for every real check.
+
+## Review round 3 (Codex on `3afb678`/`7439fcd`) — fix and evidence
+
+Codex caught a remaining live-gate hole: `check_fresh(srv=..., document_id=...)`
+used the supplied `document_id` only to FIND an entry in the live state; the
+index's stored `ocs.document_id` was never compared. In a session holding two
+documents at the same revision, a live check pointed at the OTHER document
+matched (same session, entry found, same revision, and no path check because
+neither document has a file) — an answer "validated" by an unrelated document.
+
+Fix: the supplied `document_id` must now equal the stored `ocs.document_id`
+before the live check is accepted; any mismatch refuses with `IndexStaleError`
+naming both ids and the reason (document ids are per-session identities; the
+live check only validates facts of the document the index was built from).
+The check sits after the session-identity check and before the entry lookup,
+so the refusal hierarchy stays session → document → path → revision.
+
+New U12 pins the exact scenario: one fake session, two no-file documents
+(id 1 and id 2) at the same revision 0; an index built from document 1
+(`source_sha256=null`, live-required) answers when the live context names
+document 1 and refuses when it names document 2 — same session, same
+revision. Exact results after the fix:

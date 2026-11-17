@@ -22,36 +22,53 @@ Updated: 2026-11-17 (Africa/Cairo)
   Evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`;
   reproduction: `tools/ocs/README.md` (milestone-2 section).
   After Codex review of `fc733ac`, two trust-contract gaps were fixed
-  (see "Milestone 2 review round 2" below): 22/22 checks pass (11 unit +
-  11 real binary); REAL-BINARY INTEGRATION: VERIFIED. Codex review of the
-  fix commit is the next gate (branch pushed, not merged).
+  (see "Milestone 2 review round 2" below), plus the round-3 document-ID
+  fix: 23/23 checks pass (12 unit + 11 real binary); REAL-BINARY
+  INTEGRATION: VERIFIED. Codex review of the branch tip is the next gate
+  (branch pushed, not merged).
 
 ## Review handoff for Codex (GitHub is the handoff channel)
 
 - **Branch:** `feat/drawing-index` — https://github.com/yusef47/vibe-engineer/tree/feat/drawing-index
-- **Fix commit:** `3afb678d22770def00dc557f35e5452499d719ba`
-  ("Fix Codex review: gate every accessor; fail closed on unverifiable
-  indexes"), on top of `fc733ac` (the commit Codex reviewed). Not merged;
-  no PR opened. The branch is the handoff artifact — review it there.
+- **Round-3 fix commit:** the current tip of this branch — the commit carrying
+  the `drawing_index.py` / `test_drawing_index.py` changes TOGETHER with this
+  HANDOFF.md update (get its exact SHA with `git rev-parse HEAD` on the
+  branch; a commit cannot embed its own SHA). `3afb678` = the round-2 fix
+  Codex reviewed; `7439fcd` = docs-only handoff metadata (no code change —
+  the document-ID fix was still missing there and is now implemented at the
+  branch tip). Not merged; no PR opened.
 - **What changed and why:**
-  1. Every public query path now passes the freshness gate
-     (`entities()`, `summary()`, CLI `handles` previously exposed facts
-     unchecked). `U8` pins the public accessor surface reflectively;
+  1. Review round 2 (`3afb678`): every public query path now passes the
+     freshness gate (`entities()`, `summary()`, CLI `handles` previously
+     exposed facts unchecked). `U8` pins the accessor surface reflectively;
      `R9` proves the CLI `handles` refusal end-to-end on the real binary.
-  2. Indexes whose facts the disk cannot validate (built from an
-     unsaved/dirty OCS document, or with `source_sha256=null`) now fail
-     closed: they require the matching live session + document + revision
+  2. Review round 2 (`3afb678`): indexes whose facts the disk cannot validate
+     (built from an unsaved/dirty OCS document, or with `source_sha256=null`)
+     now fail closed: matching live session + document + revision required
      for every query, with session identity verified on all live checks
      (document ids and revision counters are per-session). New exception
      `IndexUnverifiableError` (subclass of `IndexStaleError`; CLI prints
      `UNVERIFIABLE INDEX`, exit 3). Unit: `U9`/`U10`; real binary:
      `R10`/`R11`; session identity for clean indexes: `U11`.
+  3. **Review round 3 (branch tip): document-ID identity in the live gate.**
+     `check_fresh(srv=..., document_id=...)` used the supplied id only to
+     find an entry in the live state; it never compared it with the index's
+     stored `ocs.document_id`. In a session with two documents at the same
+     revision, a live check could be "validated" against the OTHER document
+     (same session, entry found, same revision, and no path check because
+     neither document has a file). The supplied `document_id` must now equal
+     the indexed one before the live check is accepted; a mismatch refuses
+     with `IndexStaleError` naming both ids. The check sits after the
+     session-identity check and before the entry lookup (refusal hierarchy
+     session → document → path → revision). New `U12` pins the exact case:
+     two no-file documents, same session, same revision — the live check on
+     the wrong document id refuses; the indexed document still answers.
   Full rationale and evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`
-  ("Review round 2" section).
-- **Exact test commands, results, skips (this branch, after the fix):**
+  ("Review round 2" and "Review round 3" sections).
+- **Exact test commands, results, skips (after the round-3 fix):**
 
 ```
-$ python3 tools/ocs/test_drawing_index.py   → 22/22 checks PASS (unit 11/11, real binary 11/11), exit 0, 2 consecutive runs
+$ python3 tools/ocs/test_drawing_index.py   → 23/23 checks PASS (unit 12/12, real binary 11/11), exit 0, 2 consecutive runs
 $ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS, exit 0 (milestone-1 regression)
 $ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed, exit 0
 $ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
@@ -65,16 +82,15 @@ $ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
   end of the results file: pagination offset path, entity-type coverage
   beyond Line/Circle/Text, DWG/blocks/XREFs/layouts, GUI channels,
   field-level provenance via the verbatim `raw` payload.
-- **What Codex should review next:** the fix commit `3afb678` —
-  specifically (a) the fail-closed semantics in `DrawingIndex.check_fresh`
-  and `_live_required_reason` (`tools/ocs/drawing_index.py`): whether
-  dirty/no-hash indexes requiring the *same session* is the right trust
-  boundary and whether any public accessor can still bypass the gate
-  (`U8`'s exempt list: persistence helpers + raw `data` container);
-  (b) whether `IndexUnverifiableError` as a subclass of
-  `IndexStaleError` (same CLI exit 3) is the right refusal taxonomy;
-  (c) the new tests U8–U11/R9–R11 for correctness of what they claim to
-  prove. If accepted, the branch can be merged to `main` (PR #2).
+- **What Codex should review next (round 3):** the document-ID equality
+  check in `DrawingIndex.check_fresh` (`tools/ocs/drawing_index.py`) — its
+  placement (after session identity, before entry lookup) and the refusal
+  as `IndexStaleError` naming both ids; and new `U12`'s two-document,
+  same-session, same-revision, no-file scenario. Then re-confirm the
+  round-2 semantics if useful: fail-closed trust boundary in
+  `check_fresh`/`_live_required_reason`, `IndexUnverifiableError` taxonomy,
+  and U8's exempt list (persistence helpers + raw `data` container). If
+  accepted, the branch can be merged to `main` (PR #2).
 - The GitHub repository is public (`https://github.com/yusef47/vibe-engineer`).
   Access works through the repository-scoped SSH deploy key
   (`~/.ssh/vibe_engineer_deploy`, never committed) via the `github-vibe` SSH
@@ -88,7 +104,7 @@ $ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
 All commands and exact outputs: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`.
 
 ```
-$ python3 tools/ocs/test_drawing_index.py   → 22/22 checks PASS (unit 11/11, real 11/11), exit 0
+$ python3 tools/ocs/test_drawing_index.py   → 23/23 checks PASS (unit 12/12, real 11/11), exit 0
 $ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS (regression check after the work)
 $ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed
 $ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed
@@ -159,6 +175,19 @@ Two trust-contract gaps were raised and fixed on this branch:
 
 Recovery path unchanged: explicit new indexing operations only
 (`drawing_index.py index`, `build_index()`, `index_document()`).
+
+## Milestone 2 review round 3 (Codex on `3afb678`/`7439fcd`)
+
+One live-gate hole remained: the supplied `document_id` was used only to find
+an entry in the live state and was never compared with the index's stored
+`ocs.document_id`. With two documents in one session at the same revision (and
+no file paths, so no path check), a live check could pass against the WRONG
+document. Fixed at the branch tip: `check_fresh` now refuses with
+`IndexStaleError` naming both ids unless the supplied id equals the indexed
+one, before looking up any live entry. New `U12` (two no-file documents, same
+session, same revision) proves the wrong-document check refuses while the
+indexed document still answers. Full suite re-run: 23/23 (unit 12/12, real
+11/11), twice, no skips; milestone-1 suites still 15/15, 6/6, 4/4.
 
 ## Review fixes (Codex review of milestone-1 `15aa6d0`, merged in PR #1)
 

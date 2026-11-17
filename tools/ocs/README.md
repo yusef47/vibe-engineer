@@ -72,12 +72,14 @@ drawing index built (vibe-engineer/drawing-index@1)
   an explicit new indexing operation (`drawing_index.py index` /
   `build_index()` / `index_document()`).
 - **Live staleness.** With a live session context (`srv=…, document_id=…`),
-  queries compare the live session id, the document identity (registered
-  path) and the document revision with the indexed ones; any mismatch
-  refuses. An unsaved in-session edit (which the file hash cannot see) is
-  refused; a different session is refused too (document ids and revision
-  counters are per-session, so a cross-session comparison would be
-  meaningless).
+  the supplied `document_id` must equal the index's stored `ocs.document_id`
+  (a session can hold two documents at the same revision; validating against
+  the other one proves nothing), and the live session id, the document
+  identity (registered path) and the document revision are compared with
+  the indexed ones; any mismatch refuses. An unsaved in-session edit (which
+  the file hash cannot see) is refused; a different session is refused too
+  (document ids and revision counters are per-session, so a cross-session
+  comparison would be meaningless).
 - **Fail-closed indexes.** An index built from an unsaved (dirty) OCS
   document, or one without a readable source file/hash (`source_sha256`
   null), carries in-session facts that the disk cannot validate. Such an

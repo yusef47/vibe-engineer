@@ -46,9 +46,12 @@ Staleness and safety (the trust contract):
   explicit new indexing operation (`build_index` / `index_document` /
   CLI `index`).
 - Live gate: with a live session context (`srv=..., document_id=...`) the
-  live session id, the document identity (registered path) and the document
-  revision are all compared with the indexed ones; any mismatch refuses.
-  This catches unsaved in-session changes that a file hash cannot see.
+  supplied `document_id` must equal the index's stored `ocs.document_id`
+  (validating against a different document proves nothing about these
+  facts), and the live session id, the document identity (registered path)
+  and the document revision are all compared with the indexed ones; any
+  mismatch refuses. This catches unsaved in-session changes that a file
+  hash cannot see.
 - Fail-closed indexes: an index built from an unsaved (dirty) OCS document
   or one without a readable source file/hash (`source_sha256` null) carries
   in-session facts that the disk cannot validate. Such indexes REQUIRE the
@@ -486,8 +489,9 @@ class DrawingIndex:
         Always: re-hash the source file when the index has one.
         Fail-closed indexes (built from an unsaved/dirty document, or with
         `source_sha256` null) additionally REQUIRE a live session context
-        (`srv` + `document_id`, both or neither) whose session id, document
-        identity and revision all match; anything else refuses with
+        (`srv` + `document_id`, both or neither) whose supplied document id
+        equals the indexed one and whose session id, document identity and
+        revision all match; anything else refuses with
         `IndexUnverifiableError`.
         For file-anchored indexes the live context is optional: when given,
         the same session/document/revision comparison applies; a closed
@@ -541,6 +545,15 @@ class DrawingIndex:
                  "be meaningless)"],
                 {"indexed_session_id": ocs_meta.get("session_id"),
                  "live_session_id": live_sid})
+        if document_id != ocs_meta.get("document_id"):
+            raise IndexStaleError(
+                [f"the supplied live document {document_id!r} is not the indexed "
+                 f"document {ocs_meta.get('document_id')!r}: a live check only "
+                 "validates facts of the document this index was built from "
+                 "(document ids are per-session identities, and another "
+                 "document in the same session can carry the same revision)"],
+                {"indexed_document_id": ocs_meta.get("document_id"),
+                 "live_document_id": document_id})
         entry = next((d for d in state.get("documents") or []
                       if d.get("id") == document_id), None)
         if entry is None:

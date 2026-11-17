@@ -3,7 +3,7 @@
 
 Checks the `drawing_index` module in two tiers:
 
-- UNIT (U1–U11): canned `--serve` replies (no OCS process) prove normalization
+- UNIT (U1–U12): canned `--serve` replies (no OCS process) prove normalization
   (verbatim facts, explicit "unknown" sentinel, no invented fields), the
   deterministic queries, the file-hash staleness gate, the live-revision
   staleness gate, count integrity, JSON round-trip, the closed-document
@@ -11,7 +11,8 @@ Checks the `drawing_index` module in two tiers:
   and the fail-closed rules for indexes that disk cannot validate (built
   from an unsaved/dirty document, or without a source file/hash): such
   indexes require the matching live session + document + revision and
-  refuse otherwise.
+  refuse otherwise; a supplied live `document_id` must equal the indexed
+  one (no cross-document validation in the same session).
 - REAL BINARY (R1–R11): the pinned OpenCADStudio build, headless. A synthetic
   fixture is produced by the milestone-1 tooling (`ocs_smoke_test.py`) and
   indexed through `--serve`; the index is cross-checked against a fresh live
@@ -487,6 +488,39 @@ def unit_clean_index_live_checks_session_identity() -> str:
         return "session identity verified on live checks; file-only path unaffected"
 
 
+def unit_live_document_id_must_equal_indexed() -> str:
+    """Regression (review of 3afb678): a live check must land on the document
+    the index was built from. A session can hold TWO documents at the SAME
+    revision; validating against the other document's id proves nothing.
+    Both documents here have no file (source_sha256=null, live-required),
+    same session, same revision — the old code answered the wrong-document
+    live check because entry lookup + revision comparison alone matched."""
+    canned = {"ok": True, "count": 3, "entities": CANNED, "next_offset": None}
+    docs = [{"dirty": False, "id": 1, "path": None, "revision": 0,
+             "title": "A", "start": False},
+            {"dirty": False, "id": 2, "path": None, "revision": 0,
+             "title": "B", "start": False}]
+    state = fake_state(None, revision=0, doc_id=1, documents=docs)
+    srv = FakeServe(state, canned)
+    idx = di.index_document(srv, 1)
+    assert idx.data["source"]["sha256"] is None        # live-required index
+    assert idx.data["ocs"]["document_id"] == 1
+    # the indexed document itself: live-verified answer still works
+    assert idx.count(srv=srv, document_id=1) == 3
+    assert idx.summary(srv=srv, document_id=1)["counts"]["entities"] == 3
+    # the OTHER document, SAME session, SAME revision: refuse
+    try:
+        idx.count(srv=srv, document_id=2)
+    except di.IndexStaleError as e:
+        assert "is not the indexed document" in str(e), e
+        assert "1" in str(e) and "2" in str(e), e  # both ids named
+    else:
+        raise AssertionError("live check accepted a different document id "
+                             "in the same session at the same revision")
+    return ("two no-file documents, same session+revision: live check on "
+            "document 2 refused, on the indexed document 1 answers")
+
+
 # ---- real-binary tier -------------------------------------------------------
 EXE = os.path.abspath(os.path.expanduser(
     os.environ.get("OCS_APPIMAGE") or ocs.DEFAULT_EXE))
@@ -877,6 +911,9 @@ def main() -> int:
           unit_nofile_index_requires_live)
     check("U11 unit: live checks verify session identity even for file-anchored "
           "indexes", unit_clean_index_live_checks_session_identity)
+    check("U12 unit: live check must land on the indexed document (two no-file "
+          "documents, same session, same revision)",
+          unit_live_document_id_must_equal_indexed)
 
     ctx: dict = {}
 
