@@ -6,12 +6,14 @@ The initial integration target is [Open CAD Studio](https://github.com/HakanSeve
 
 ## Current status
 
-The first milestone (a deterministic CAD integration smoke test) has been
-verified on the `feat/ocs-smoke-test` branch: a pinned Open CAD Studio
-release runs headless in Google Cloud Shell and the full read → bounded edit
-→ verify → undo → save → reopen cycle passes on a synthetic drawing. See
+The first milestone (a deterministic CAD integration smoke test) is merged to
+`main` (PR #1): a pinned Open CAD Studio release runs headless in Google Cloud
+Shell and the full read → bounded edit → verify → undo → save → reopen cycle
+passes on a synthetic drawing. The second milestone — a trustworthy
+read/index layer for an existing drawing with provenance and stale-index
+detection — is on branch `feat/drawing-index` (pending review). See
 [HANDOFF.md](HANDOFF.md) and [tools/ocs/README.md](tools/ocs/README.md). No
-application code or OpenRouter key has been added yet.
+AI model or OpenRouter key has been added yet.
 
 ## First technical milestone
 

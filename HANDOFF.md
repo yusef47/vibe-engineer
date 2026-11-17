@@ -5,20 +5,77 @@ Updated: 2026-11-17 (Africa/Cairo)
 ## Current state
 
 - Product direction and execution gates are documented in `PLAN.md`.
-- **Milestone 1 (deterministic CAD integration smoke test) is complete on
-  branch `feat/ocs-smoke-test`.** All 15 steps pass against the real Open
-  CAD Studio binary, headless, in Google Cloud Shell. Full evidence:
+- **Milestone 1 (deterministic CAD integration smoke test) is complete and
+  merged to `main` (PR #1).** All 15 steps pass against the real Open CAD
+  Studio binary, headless, in Google Cloud Shell. Full evidence:
   `tools/ocs/results/2026-11-17_v2026.46_cloudshell.md`; reproduction:
   `tools/ocs/README.md`.
-- Codex reviewed commit `15aa6d0` and raised two issues; both are fixed on
-  this branch (see "Review fixes" below) and covered by focused checks.
+- **Milestone 2 (drawing read/index layer) is complete on branch
+  `feat/drawing-index`.** A small stdlib-only module
+  (`tools/ocs/drawing_index.py`) opens an existing DXF through the real
+  pinned OCS `--serve` channel, builds a provenance-bearing index (source
+  path + SHA-256, OCS version/session/document id/revision, per-entity
+  handle/type/layer/geometry/text exactly as returned, explicit `unknown`
+  sentinel for anything missing), and answers deterministic queries
+  (count, count by type/layer, lookup by handle, text search) behind two
+  staleness gates: the source-file hash and the live document revision.
+  Evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`;
+  reproduction: `tools/ocs/README.md` (milestone-2 section).
+  15/15 checks pass (7 unit + 8 real binary) in 3 consecutive runs;
+  REAL-BINARY INTEGRATION: VERIFIED. Codex review is the next gate
+  (branch pushed, not merged).
 - The GitHub repository is public (`https://github.com/yusef47/vibe-engineer`).
   Access works through the repository-scoped SSH deploy key
   (`~/.ssh/vibe_engineer_deploy`, never committed) via the `github-vibe` SSH
   alias.
 - No AI model, OpenRouter key, or application framework has been added.
+  No structural classification is produced anywhere (every entity record
+  keeps `classification: null` until an engineer confirms labels).
 
-## Review fixes (Codex review of `15aa6d0`, fixed on this branch)
+## Milestone 2 — what works (verified against the real pinned binary)
+
+All commands and exact outputs: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`.
+
+```
+$ python3 tools/ocs/test_drawing_index.py   → 15/15 checks PASS (unit 7/7, real 8/8), exit 0
+$ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS (regression check after the work)
+$ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed
+$ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed
+```
+
+Proven (R1–R8, real pinned OCS v2026.46, headless):
+
+- R1 the binary is the pinned release (SHA-256 asserted against the pinned digest).
+- R2 the fixture is produced by the milestone-1 tooling itself (the test runs
+  `ocs_smoke_test.py`, which also re-proved milestone 1 with zero regressions).
+- R3 the index built through `--serve` matches a fresh live `query` of the
+  same file exactly: 6 entities, handles `86`–`8B`, per-handle
+  type/layer/space/owner/color/geometry/text/bounds equal; counts
+  Line 4 / Circle 1 / Text 1, layers TEST-BOUNDARY 4 / TEST-SYMBOLS 2.
+- R4 indexing does not modify the source (hash unchanged; also hashed
+  before/after inside every build).
+- R5 a copy changed THROUGH OCS (bounded edit + save) makes the old index
+  refuse every query form (count/lookup/search/counts) with both hashes
+  named; an explicit re-index accepts the file and records the new hash.
+- R6 an unsaved in-session edit (file hash unchanged) is caught only by the
+  live revision gate: `live document revision 1 != indexed revision 0`
+  refused; the file-hash-only answer stayed correct; explicit rebuild
+  accepted.
+- R7 `capabilities` advertises `file_identity` but the pinned build answers
+  `unknown op: file_identity` — recorded in the index as unsupported, with
+  the verbatim reply. (Safety note learned en route: sending ANY op as a
+  protocol-1 mutation envelope can advance the document revision and mark
+  the document dirty even when the op fails; the read layer therefore uses
+  plain passive sends only — indexing leaves the document rev 0, dirty=False.)
+- R8 no structural classification exists anywhere in the index
+  (`classification: null` on every record; type/layer verbatim).
+
+Deterministic queries (CLI, no OCS needed for `query`): `count`, `types`,
+`layers`, `handles`, `handle:<H>` (full record + provenance), `text:<STR>`
+(substring over recorded text values only; unknown type/missing text never
+guessed). `query` exit codes: 0 answered, 3 stale-refusal, 2 usage.
+
+## Review fixes (Codex review of milestone-1 `15aa6d0`, merged in PR #1)
 
 1. **Safe workdir.** The smoke test used to `rmtree` the caller-supplied
    `--workdir`. It now treats `--workdir` as a base directory and creates a
@@ -109,18 +166,30 @@ is available so the AppImage runs without extraction.
 
 ## Disk usage
 
-`/home`: 3.9 GB free of 4.8 GB. OCS install 55 MB; smoke-test outputs
-(`tools/ocs/out/`, gitignored) < 1 MB per run.
+`/home`: 3.9 GB free of 4.8 GB (unchanged by milestone 2). OCS install 55 MB
+(not committed); run outputs (`tools/ocs/out/`, gitignored) 6.5 MB total;
+saved index JSON ≈ 16 KB per 6-entity fixture. No new dependencies — Python 3
+stdlib only.
+
+## Known limits and unverified areas (milestone 2)
+
+Full list with evidence: end of `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`.
+Summary: pagination's `next_offset` path never triggered at fixture scale
+(loop is defensive, unverified); only Line/Circle/Text exercised (whatever
+types OCS returns are stored verbatim; Arc/Polyline/Insert/MText unverified);
+text search is a local substring match (no fuzzy/semantic matching — no AI in
+this milestone); per-entity provenance, with field-level provenance covered by
+the verbatim `raw` payload; DWG, blocks with attributes, XREFs, layouts,
+locked/frozen layers not exercised; GUI (`--mcp`) still workstation-only.
 
 ## Next concrete task
 
-Start the milestone-2 read layer ("drawing memory", PLAN phase 2) on the same
-pinned build: a small Python module that opens a DXF/DWG through `--serve`,
-builds a local index (handles → type/layer/geometry/text with source
-revisions), distinguishes read facts from computed values, and reuses
-`tools/ocs/ocs_smoke_test.py`'s `Serve` class — keeping its two safety rules:
-never delete caller data, and stop on a stale revision (re-read and re-plan,
-never auto-replay an edit). First acceptance: re-count fixture entities and
-detect a manual file change between reads (stale-index detection), with
-synthetic fixtures only. GUI (`--mcp`) validation stays on the workstation
-list.
+After Codex review/merge of `feat/drawing-index`: milestone 3 — attach the
+conversation layer (OpenRouter model, per PLAN phase 3) to this index so
+answers cite index facts with their provenance (file, revision, handle), and
+the first bounded edit proposals flow through the existing `Serve.mutate()`
+rules (plan → review → one send → verify, stop on stale revision). Before
+that, optionally: extend the fixture set to more entity types (arc, polyline,
+insert-with-attributes — still synthetic) to widen index coverage, and
+engineer-confirmed classification as an explicit, separate data flow (never
+inferred from geometry/layer names).
