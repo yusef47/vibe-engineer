@@ -522,15 +522,15 @@ def unit_live_document_id_must_equal_indexed() -> str:
 
 
 # ---- real-binary tier -------------------------------------------------------
-EXE = os.path.abspath(os.path.expanduser(
-    os.environ.get("OCS_APPIMAGE") or ocs.DEFAULT_EXE))
+EXE = ocs.resolve_exe()
 REAL_OK = os.path.isfile(EXE)
 
 
 def require_real() -> None:
     if not REAL_OK:
         raise SkipCheck(f"OpenCADStudio binary not installed at {EXE} "
-                        "(run tools/ocs/setup.sh); this check is NOT executed")
+                        "(run tools/ocs/setup.ps1 on Windows or tools/ocs/setup.sh "
+                        "on Linux); this check is NOT executed")
 
 
 def real_pinned_binary() -> str:
@@ -540,11 +540,24 @@ def real_pinned_binary() -> str:
     assert out.returncode == 0, f"--version exit={out.returncode}"
     assert ocs.OCS_VERSION in banner and ocs.OCS_REVISION in banner, banner
     digest = di.sha256_file(EXE)
-    # pinned asset digest from tools/ocs/README.md / the milestone-1 results
-    PINNED_SHA256 = "267adab0d5aea632e07da16404d7d3255bd0b05fecda60f6a71630b5fab0061c"
-    assert digest == PINNED_SHA256, \
-        f"binary is not the pinned release: sha256 {digest} != {PINNED_SHA256}"
-    return f"{ocs.OCS_VERSION} rev {ocs.OCS_REVISION}; sha256 {digest[:12]}.. matches pinned"
+    # Pinned asset digests (official GitHub release-asset digests for tag
+    # v2026.46 — https://api.github.com/repos/HakanSeven12/OpenCADStudio/releases/tags/v2026.46),
+    # one per tested platform, matching the assets installed by
+    # tools/ocs/setup.ps1 (win32) and tools/ocs/setup.sh (linux).
+    PINNED_SHA256 = {
+        "win32": ("OpenCADStudio-v2026.46-windows-x86_64-portable.exe",
+                  "9492830b7d2b8d6e4f2cedf1e8ac47c6025757e6e30fdad687df6f5209064989"),
+        "linux": ("OpenCADStudio-v2026.46-linux-x86_64.AppImage",
+                  "267adab0d5aea632e07da16404d7d3255bd0b05fecda60f6a71630b5fab0061c"),
+    }
+    pinned = PINNED_SHA256.get(sys.platform)
+    assert pinned is not None, f"no pinned asset digest recorded for platform {sys.platform!r}"
+    pinned_asset, pinned_digest = pinned
+    assert digest == pinned_digest, \
+        (f"binary is not the pinned release asset {pinned_asset}: "
+         f"sha256 {digest} != {pinned_digest}")
+    return (f"{ocs.OCS_VERSION} rev {ocs.OCS_REVISION}; sha256 {digest[:12]}.. "
+            f"matches pinned {pinned_asset}")
 
 
 def run_smoke_tool(workdir_base: str) -> str:

@@ -2,16 +2,21 @@
 
 Vibe Engineer is an experimental assistant for civil engineers working with existing CAD projects. The goal is to let an engineer inspect a drawing, ask questions about its elements, propose edits, review the impact, and verify the saved result. Structural analysis and self-correction require a separate validated calculation workflow.
 
-The initial integration target is [Open CAD Studio](https://github.com/HakanSeven12/OpenCADStudio). The assistant will be developed in Google Cloud Shell with OpenCode and synchronized through this GitHub repository.
+The initial integration target is [Open CAD Studio](https://github.com/HakanSeven12/OpenCADStudio). The assistant is developed in VS Code/OpenCode on a Windows laptop and synchronized through this GitHub repository; the Google Cloud Shell environment is paused.
 
 ## Current status
 
 The first milestone (a deterministic CAD integration smoke test) is merged to
-`main` (PR #1): a pinned Open CAD Studio release runs headless in Google Cloud
-Shell and the full read → bounded edit → verify → undo → save → reopen cycle
-passes on a synthetic drawing. The second milestone — a trustworthy
-read/index layer for an existing drawing with provenance and stale-index
-detection — is on branch `feat/drawing-index` (pending review). See
+`main` (PR #1), and the second milestone — a trustworthy read/index layer for
+an existing drawing with provenance and stale-index detection — is merged too
+(PR #2). Both run the full read → bounded edit → verify → undo → save →
+reopen cycle against the real pinned Open CAD Studio v2026.46 binary, now
+verified on **both** environments: Google Cloud Shell (Linux AppImage,
+`results/…/2026-11-17_*`) and the Windows dev laptop (official portable exe,
+SHA-256-verified before first run, `results/…/2026-11-18_v2026.46_windows_local.md`;
+setup: `tools/ocs/setup.ps1`, reproduction commands in
+[tools/ocs/README.md](tools/ocs/README.md)). Making the Windows environment
+reproducible is on branch `feat/windows-local-ocs` (pending review). See
 [HANDOFF.md](HANDOFF.md) and [tools/ocs/README.md](tools/ocs/README.md). No
 AI model or OpenRouter key has been added yet.
 

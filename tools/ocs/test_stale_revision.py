@@ -100,7 +100,7 @@ def unit_clean_reply_untouched() -> str:
 
 
 def real_binary_stale_refusal() -> str:
-    exe = os.path.expanduser(os.environ.get("OCS_APPIMAGE") or ocs.DEFAULT_EXE)
+    exe = ocs.resolve_exe()
     if not os.path.isfile(exe):
         return "SKIPPED real-binary part (OpenCADStudio binary not installed)"
     with tempfile.TemporaryDirectory() as tmp:

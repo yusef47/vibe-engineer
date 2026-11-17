@@ -1,17 +1,18 @@
 # Vibe Engineer handoff
 
-Updated: 2026-11-17 (Africa/Cairo)
+Updated: 2026-11-18 (Africa/Cairo)
 
 ## Current state
 
 - Product direction and execution gates are documented in `PLAN.md`.
 - **Milestone 1 (deterministic CAD integration smoke test) is complete and
   merged to `main` (PR #1).** All 15 steps pass against the real Open CAD
-  Studio binary, headless, in Google Cloud Shell. Full evidence:
-  `tools/ocs/results/2026-11-17_v2026.46_cloudshell.md`; reproduction:
-  `tools/ocs/README.md`.
-- **Milestone 2 (drawing read/index layer) is complete on branch
-  `feat/drawing-index`.** A small stdlib-only module
+  Studio binary, headless. Full evidence:
+  `tools/ocs/results/2026-11-17_v2026.46_cloudshell.md` (Google Cloud Shell)
+  and `tools/ocs/results/2026-11-18_v2026.46_windows_local.md` (Windows
+  laptop); reproduction: `tools/ocs/README.md`.
+- **Milestone 2 (drawing read/index layer) is complete and merged to `main`
+  (PR #2, from `feat/drawing-index`).** A small stdlib-only module
   (`tools/ocs/drawing_index.py`) opens an existing DXF through the real
   pinned OCS `--serve` channel, builds a provenance-bearing index (source
   path + SHA-256, OCS version/session/document id/revision, per-entity
@@ -19,82 +20,96 @@ Updated: 2026-11-17 (Africa/Cairo)
   sentinel for anything missing), and answers deterministic queries
   (count, count by type/layer, lookup by handle, text search) behind two
   staleness gates: the source-file hash and the live document revision.
-  Evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`;
-  reproduction: `tools/ocs/README.md` (milestone-2 section).
-  After Codex review of `fc733ac`, two trust-contract gaps were fixed
-  (see "Milestone 2 review round 2" below), plus the round-3 document-ID
-  fix: 23/23 checks pass (12 unit + 11 real binary); REAL-BINARY
-  INTEGRATION: VERIFIED. Codex review of the branch tip is the next gate
-  (branch pushed, not merged).
+  Before merge it passed 23/23 checks (12 unit + 11 real binary) against the
+  real pinned binary in Cloud Shell, including the round-2/round-3
+  trust-contract fixes described below (kept as history).
+- **Milestone 2.5 — Windows laptop reproducibility is complete on branch
+  `feat/windows-local-ocs` (PR #3, pending Codex review; stop before merge).**
+  Development moved to VS Code/OpenCode on the founder's Windows 11 laptop
+  and Google Cloud Shell is paused. The pinned OCS v2026.46 now also runs on
+  Windows through the official `windows-x86_64-portable.exe` release asset —
+  SHA-256 verified against the official GitHub release-asset digest **before
+  first execution** — installed by the new `tools/ocs/setup.ps1`. All four
+  suites pass against the real Windows binary: smoke test 15/15 steps,
+  drawing-index 23/23 checks (unit 12/12, real 11/11, **0 skips**),
+  safe-workdir 6/6, stale-revision 4/4. Evidence:
+  `tools/ocs/results/2026-11-18_v2026.46_windows_local.md`; reproduction
+  (PowerShell): `tools/ocs/README.md`.
 
 ## Review handoff for Codex (GitHub is the handoff channel)
 
-- **Branch:** `feat/drawing-index` — https://github.com/yusef47/vibe-engineer/tree/feat/drawing-index
-- **Round-3 fix commit:** the current tip of this branch — the commit carrying
-  the `drawing_index.py` / `test_drawing_index.py` changes TOGETHER with this
-  HANDOFF.md update (get its exact SHA with `git rev-parse HEAD` on the
-  branch; a commit cannot embed its own SHA). `3afb678` = the round-2 fix
-  Codex reviewed; `7439fcd` = docs-only handoff metadata (no code change —
-  the document-ID fix was still missing there and is now implemented at the
-  branch tip). Not merged; no PR opened.
-- **What changed and why:**
-  1. Review round 2 (`3afb678`): every public query path now passes the
-     freshness gate (`entities()`, `summary()`, CLI `handles` previously
-     exposed facts unchecked). `U8` pins the accessor surface reflectively;
-     `R9` proves the CLI `handles` refusal end-to-end on the real binary.
-  2. Review round 2 (`3afb678`): indexes whose facts the disk cannot validate
-     (built from an unsaved/dirty OCS document, or with `source_sha256=null`)
-     now fail closed: matching live session + document + revision required
-     for every query, with session identity verified on all live checks
-     (document ids and revision counters are per-session). New exception
-     `IndexUnverifiableError` (subclass of `IndexStaleError`; CLI prints
-     `UNVERIFIABLE INDEX`, exit 3). Unit: `U9`/`U10`; real binary:
-     `R10`/`R11`; session identity for clean indexes: `U11`.
-  3. **Review round 3 (branch tip): document-ID identity in the live gate.**
-     `check_fresh(srv=..., document_id=...)` used the supplied id only to
-     find an entry in the live state; it never compared it with the index's
-     stored `ocs.document_id`. In a session with two documents at the same
-     revision, a live check could be "validated" against the OTHER document
-     (same session, entry found, same revision, and no path check because
-     neither document has a file). The supplied `document_id` must now equal
-     the indexed one before the live check is accepted; a mismatch refuses
-     with `IndexStaleError` naming both ids. The check sits after the
-     session-identity check and before the entry lookup (refusal hierarchy
-     session → document → path → revision). New `U12` pins the exact case:
-     two no-file documents, same session, same revision — the live check on
-     the wrong document id refuses; the indexed document still answers.
-  Full rationale and evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`
-  ("Review round 2" and "Review round 3" sections).
-- **Exact test commands, results, skips (after the round-3 fix):**
+- **Branch:** `feat/windows-local-ocs` — **PR #3: https://github.com/yusef47/vibe-engineer/pull/3** (tip: run `git rev-parse HEAD` on the branch — a commit cannot name itself; PR #3 opened with the full summary, exact results, provenance, limitations and review focus).
+- **What changed and why (all in `tools/ocs/` unless noted):**
+  1. `setup.ps1` (new): Windows mirror of `setup.sh` — disk-space check,
+     pinned download to `%LOCALAPPDATA%\OpenCADStudio-v2026.46\`, SHA-256
+     verification **before executing the binary**, then the `--version`
+     banner. Uses `curl.exe` and a .NET SHA-256 (this machine's PowerShell
+     5.1 cannot autoload `Get-FileHash`), and reads the true exit code via
+     `Start-Process -Wait` (the portable exe is a GUI-subsystem binary, so
+     PowerShell's `&` call operator does not wait for it and leaves
+     `$LASTEXITCODE` unset).
+  2. `ocs_smoke_test.py`: platform-specific default exe path
+     (`%LOCALAPPDATA%\OpenCADStudio-v2026.46\OpenCADStudio.exe` on Windows,
+     `~/.local/opt/OpenCADStudio-v2026.46/OpenCADStudio.AppImage` on Linux)
+     and a `resolve_exe()` helper with override order `--exe` → `$OCS_EXE` →
+     legacy `$OCS_APPIMAGE` (Cloud Shell compatibility) → platform default;
+     `prepare_run_dir()` now refuses ANY drive root as a `--workdir` base on
+     Windows (POSIX behavior unchanged).
+  3. `test_drawing_index.py`: per-platform pinned asset digest table (win32
+     portable exe `9492830b…` / linux AppImage `267adab0…`); R1 refuses a
+     binary whose digest does not match the pinned asset for the running
+     platform, and refuses an unknown platform outright.
+  4. `test_safe_workdir.py`: directory symlinks created with
+     `target_is_directory=True` (required on Windows, ignored on POSIX);
+     symlink sub-parts report SKIP honestly when the session lacks symlink
+     privilege (this laptop has it — both parts ran and passed).
+  5. `drawing_index.py`: stale-refusal rebuild hint now names the running
+     interpreter (copy-pasteable on Windows too); exe resolution via
+     `resolve_exe()`.
+  6. Docs: `README.md`, `AGENTS.md`, `tools/ocs/README.md` updated to the
+     Windows-laptop-first workflow with exact PowerShell commands; Cloud
+     Shell kept as a supported (paused) Linux path.
+  - Deliberately NOT changed: `Serve.mutate()` semantics (exactly one send,
+    stop on stale), the no-`rmtree` guarantee, the freshness/staleness
+    gates, `setup.sh`, and the pinned version/commit.
+- **Exact test commands and results (PowerShell, real pinned Windows
+  binary):**
 
 ```
-$ python3 tools/ocs/test_drawing_index.py   → 23/23 checks PASS (unit 12/12, real binary 11/11), exit 0, 2 consecutive runs
-$ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS, exit 0 (milestone-1 regression)
-$ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed, exit 0
-$ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
+$ python tools\ocs\ocs_smoke_test.py      → 15/15 steps PASS, exit 0 (4 consecutive runs)
+$ python tools\ocs\test_drawing_index.py  → 23/23 checks PASS (unit 12/12, real 11/11), 0 SKIP, exit 0
+$ python tools\ocs\test_safe_workdir.py   → 6/6 checks passed, exit 0
+$ python tools\ocs\test_stale_revision.py → 4/4 checks passed, exit 0
 ```
 
-  Skips: **none** — the pinned binary was present for every real check.
+  Skips: **none** in the recorded runs — every real-binary check executed.
   (If the binary is missing on another machine, the real checks report
   SKIP and the verdict explicitly says integration was NOT verified.)
-- **Known limitations / blockers:** none blocking review. Unverified
-  areas are listed below ("Known limits and unverified areas") and at the
-  end of the results file: pagination offset path, entity-type coverage
-  beyond Line/Circle/Text, DWG/blocks/XREFs/layouts, GUI channels,
-  field-level provenance via the verbatim `raw` payload.
-- **What Codex should review next (round 3):** the document-ID equality
-  check in `DrawingIndex.check_fresh` (`tools/ocs/drawing_index.py`) — its
-  placement (after session identity, before entry lookup) and the refusal
-  as `IndexStaleError` naming both ids; and new `U12`'s two-document,
-  same-session, same-revision, no-file scenario. Then re-confirm the
-  round-2 semantics if useful: fail-closed trust boundary in
-  `check_fresh`/`_live_required_reason`, `IndexUnverifiableError` taxonomy,
-  and U8's exempt list (persistence helpers + raw `data` container). If
-  accepted, the branch can be merged to `main` (PR #2).
-- The GitHub repository is public (`https://github.com/yusef47/vibe-engineer`).
-  Access works through the repository-scoped SSH deploy key
-  (`~/.ssh/vibe_engineer_deploy`, never committed) via the `github-vibe` SSH
-  alias.
+- **Binary provenance:** asset
+  `OpenCADStudio-v2026.46-windows-x86_64-portable.exe` (186,634,144 bytes),
+  official GitHub release-asset digest for tag `v2026.46`
+  `9492830b7d2b8d6e4f2cedf1e8ac47c6025757e6e30fdad687df6f5209064989`;
+  the downloaded file's SHA-256 matched exactly, and the banner reads
+  `OpenCADStudio 2026.46` / `revision: 8b4d27046040` / `commit date:
+  2026-11-15` (tagged commit `8b4d27046040b27eb07d3faed7b7472bd7bdaea9`).
+  The unused MSI alternative (`…-installer.msi`, `3092ccb7…`) is recorded
+  in the results file. Host: Windows 11, AMD64, Python 3.12.6; no WSL, no
+  Docker, no new dependencies.
+- **Known limitation found on Windows:** one transient save flake — a
+  single embedded smoke run failed S12 with `os error 1175` ("Unable to
+  remove the file to be replaced": antivirus/indexer briefly holding the
+  freshly written DXF open). It then passed 4 consecutive runs; no
+  automatic retry was added (mutation sends stay exactly-once by design).
+  Details in the results file.
+- **What Codex should review:** the platform split in `resolve_exe()` /
+  default paths, the per-platform digest table in `real_pinned_binary()`,
+  `setup.ps1` (digest-before-execute order, GUI-subsystem exit-code
+  handling), and the drive-root refusal in `prepare_run_dir()`. The
+  behavioral safety rules are re-proven on Windows by
+  `test_safe_workdir.py` (6/6) and `test_stale_revision.py` (4/4).
+- The GitHub repository is `https://github.com/yusef47/vibe-engineer`.
+  Pushes now happen from the Windows laptop with the founder's own GitHub
+  authentication; the Cloud Shell SSH deploy-key workflow is paused.
 - No AI model, OpenRouter key, or application framework has been added.
   No structural classification is produced anywhere (every entity record
   keeps `classification: null` until an engineer confirms labels).
@@ -228,19 +243,26 @@ Full smoke test re-run after the fixes: all 15 steps PASS (~1.3 s), outputs in
 ## Tested Open CAD Studio build (pinned)
 
 - Release `v2026.46` (2026-11-15), commit `8b4d27046040b27eb07d3faed7b7472bd7bdaea9`.
-- Asset `OpenCADStudio-v2026.46-linux-x86_64.AppImage`, SHA-256
+- Linux asset `OpenCADStudio-v2026.46-linux-x86_64.AppImage`, SHA-256
   `267adab0d5aea632e07da16404d7d3255bd0b05fecda60f6a71630b5fab0061c` (verified
-  against the release metadata digest).
-- Installed by `tools/ocs/setup.sh` to `~/.local/opt/OpenCADStudio-v2026.46/`
-  (55 MB; not committed).
+  against the release metadata digest). Installed by `tools/ocs/setup.sh` to
+  `~/.local/opt/OpenCADStudio-v2026.46/` (55 MB; not committed).
+- Windows asset `OpenCADStudio-v2026.46-windows-x86_64-portable.exe`
+  (186,634,144 bytes), SHA-256
+  `9492830b7d2b8d6e4f2cedf1e8ac47c6025757e6e30fdad687df6f5209064989` (official
+  GitHub release-asset digest; the downloaded file matched exactly, verified
+  before first execution). Installed by `tools/ocs/setup.ps1` to
+  `%LOCALAPPDATA%\OpenCADStudio-v2026.46\OpenCADStudio.exe` (not committed).
 - Automation channel: `--serve` (JSON-per-line over stdin/stdout, headless,
-  no display). Docs read at tag `v2026.46`: `docs/automation/README.md`,
-  `docs/automation/API-SPEC.md`, `docs/automation/native.md`,
-  `docs/assistant-panel.md`.
+  no display on either platform). Docs read at tag `v2026.46`:
+  `docs/automation/README.md`, `docs/automation/API-SPEC.md`,
+  `docs/automation/native.md`, `docs/assistant-panel.md`.
 
 ## Verification result (exact)
 
-`python3 tools/ocs/ocs_smoke_test.py` — PASS, ~1.3 s, 3 consecutive runs:
+`python3 tools/ocs/ocs_smoke_test.py` — PASS on Google Cloud Shell, ~1.3 s,
+3 consecutive runs (`python tools\ocs\ocs_smoke_test.py` — PASS on the
+Windows laptop, 4 consecutive runs; see the Windows results file):
 
 | Step | Proof |
 |---|---|
@@ -274,16 +296,22 @@ Notable API behaviors captured (relevant for the next layer):
 
 ## Blockers
 
-None blocking the next task. Environment notes: Cloud Shell has no GPU (OCS
-falls back to software rendering with stderr warnings — harmless here); FUSE
-is available so the AppImage runs without extraction.
+None blocking the next task. Environment notes: on Cloud Shell there is no
+GPU (OCS falls back to software rendering — harmless); FUSE is available so
+the AppImage runs without extraction. On the Windows laptop the dx12 GPU
+probe succeeds (Intel Iris Xe), the portable exe is a GUI-subsystem binary
+(`setup.ps1` handles the no-wait `&` quirk), and one transient antivirus
+file-lock flake was observed once during a save (`os error 1175`; passed on
+re-run — no automatic retry added on purpose).
 
 ## Disk usage
 
-`/home`: 3.9 GB free of 4.8 GB (unchanged by milestone 2). OCS install 55 MB
-(not committed); run outputs (`tools/ocs/out/`, gitignored) 6.5 MB total;
-saved index JSON ≈ 16 KB per 6-entity fixture. No new dependencies — Python 3
-stdlib only.
+Cloud Shell (milestone-2 record): `/home` 3.9 GB free of 4.8 GB; OCS install
+55 MB (not committed); run outputs (`tools/ocs/out/`, gitignored) 6.5 MB
+total; saved index JSON ≈ 16 KB per 6-entity fixture. No new dependencies —
+Python 3 stdlib only. Windows laptop: OCS portable exe 186,634,144 bytes in
+`%LOCALAPPDATA%\OpenCADStudio-v2026.46\` (not committed); ~170 GB free on
+`C:` at test time; same stdlib-only tooling.
 
 ## Known limits and unverified areas (milestone 2)
 
@@ -298,12 +326,13 @@ locked/frozen layers not exercised; GUI (`--mcp`) still workstation-only.
 
 ## Next concrete task
 
-After Codex review/merge of `feat/drawing-index`: milestone 3 — attach the
-conversation layer (OpenRouter model, per PLAN phase 3) to this index so
+After Codex review/merge of `feat/windows-local-ocs`: milestone 3 — attach
+the conversation layer (OpenRouter model, per PLAN phase 3) to this index so
 answers cite index facts with their provenance (file, revision, handle), and
 the first bounded edit proposals flow through the existing `Serve.mutate()`
-rules (plan → review → one send → verify, stop on stale revision). Before
-that, optionally: extend the fixture set to more entity types (arc, polyline,
+rules (plan → review → one send → verify, stop on stale revision). Milestone
+3 is deliberately not started in this branch. Before that, optionally:
+extend the fixture set to more entity types (arc, polyline,
 insert-with-attributes — still synthetic) to widen index coverage, and
 engineer-confirmed classification as an explicit, separate data flow (never
 inferred from geometry/layer names).

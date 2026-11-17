@@ -12,15 +12,16 @@ This repository is shared between the founder, Codex, and OpenCode. Read `README
 
 ## Development environment
 
-- Primary development happens in Google Cloud Shell with OpenCode. Cloud Shell has about 5 GB persistent home storage; keep caches and downloads small.
-- GitHub repository: `https://github.com/yusef47/vibe-engineer` (public; push access via the repository-scoped SSH deploy key, which is never committed).
-- Do not commit API keys, credentials, customer drawings, or generated CAD outputs. Use local environment variables or ignored `.env` files.
+- Primary development happens in VS Code/OpenCode on the founder's Windows 11 laptop (`C:\Users\Hp\Desktop\ai_cad\vibe-engineer`, Python 3.12). The pinned Open CAD Studio binary is installed to `%LOCALAPPDATA%\OpenCADStudio-v2026.46\` by `tools/ocs/setup.ps1` (verified by SHA-256 before first run; never committed).
+- Google Cloud Shell is paused; its Linux workflow (`tools/ocs/setup.sh`, `python3`) remains supported and documented, and the per-platform binary digests are pinned in `test_drawing_index.py`.
+- GitHub repository: `https://github.com/yusef47/vibe-engineer` (push access from the laptop uses the founder's own GitHub credentials; Cloud Shell used the repository-scoped SSH deploy key, which is never committed).
+- Do not commit API keys, credentials, customer drawings, or generated CAD outputs. Use local environment variables or ignored `.env` files. Binaries live outside the repository (`%LOCALAPPDATA%` on Windows, `~/.local/opt` on Linux).
 - Prefer the documented Open CAD Studio automation endpoint over a source fork. Pin a version for reproducible tests and document observed behavior.
-- Cloud Shell is a headless environment. Test headless CAD automation there first; interactive desktop integration must be verified later on a machine with a GUI.
+- The laptop has a display, but headless `--serve` automation stays the tested channel; GUI/`--mcp` integration is a separate, later validation step.
 
 ## Collaboration and checks
 
 - Keep each change focused and document how it was verified.
 - Update `HANDOFF.md` with completed work, test results, blockers, and the next concrete task when ending a milestone.
-- Push committed work to `main` when a milestone is validated; use a branch or draft PR for changes that need review.
-- Before a costly download or build, check remaining Cloud Shell space with `df -h /home`.
+- Push committed work to `main` when a milestone is validated; use a branch or draft PR for changes that need review. Stop before merging when a review gate was agreed.
+- Before a costly download or build, check free disk space first.

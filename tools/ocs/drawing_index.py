@@ -101,11 +101,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from ocs_smoke_test import (  # noqa: E402  (proven milestone-1 pieces, reused as-is)
-    DEFAULT_EXE,
     Serve,
     StepFailure,
     StaleStateError,
     prepare_run_dir,
+    resolve_exe,
     sha256_file,
     utcnow,
 )
@@ -643,11 +643,21 @@ def _fmt_counts(counts: dict) -> str:
     return ", ".join(f"{k} {v}" for k, v in counts.items()) or "(none)"
 
 
+def _print_rebuild_hint() -> None:
+    """Copy-pasteable rebuild command, using the interpreter actually running
+    (`python3` on Linux, the real python.exe path on Windows)."""
+    interpreter = f'"{sys.executable}"' if " " in sys.executable else sys.executable
+    print("  rebuild only through an explicit new indexing operation:", file=sys.stderr)
+    print(f"    {interpreter} tools/ocs/drawing_index.py index "
+          f"--file <drawing> --json <index>", file=sys.stderr)
+
+
 def cmd_index(args, parser) -> int:
     from ocs_smoke_test import OCS_VERSION, OCS_REVISION  # pinned expectations for the warning
-    exe = os.path.abspath(os.path.expanduser(args.exe))
+    exe = resolve_exe(args.exe)
     if not os.path.isfile(exe):
-        parser.error(f"OpenCADStudio executable not found: {exe} (run tools/ocs/setup.sh)")
+        parser.error(f"OpenCADStudio executable not found: {exe} "
+                     f"(run tools/ocs/setup.ps1 on Windows or tools/ocs/setup.sh on Linux)")
     repo_root = os.path.dirname(os.path.dirname(HERE))
     base = args.workdir or os.path.join(repo_root, "tools", "ocs", "out")
     try:
@@ -720,17 +730,13 @@ def cmd_query(args, parser) -> int:
         print(f"UNVERIFIABLE INDEX — refusing to answer from {args.index}", file=sys.stderr)
         for r in e.reasons:
             print(f"  reason: {r}", file=sys.stderr)
-        print("  rebuild only through an explicit new indexing operation:", file=sys.stderr)
-        print("    python3 tools/ocs/drawing_index.py index --file <drawing> --json <index>",
-              file=sys.stderr)
+        _print_rebuild_hint()
         return 3
     except IndexStaleError as e:
         print(f"STALE INDEX — refusing to answer from {args.index}", file=sys.stderr)
         for r in e.reasons:
             print(f"  reason: {r}", file=sys.stderr)
-        print("  rebuild only through an explicit new indexing operation:", file=sys.stderr)
-        print("    python3 tools/ocs/drawing_index.py index --file <drawing> --json <index>",
-              file=sys.stderr)
+        _print_rebuild_hint()
         return 3
     except KeyError as e:
         print(str(e))
@@ -746,8 +752,10 @@ def main(argv=None) -> int:
 
     p_index = sub.add_parser("index", help="build a drawing index (explicit indexing op)")
     p_index.add_argument("--file", required=True, help="existing drawing file to index")
-    p_index.add_argument("--exe", default=os.environ.get("OCS_APPIMAGE", DEFAULT_EXE),
-                         help="OpenCADStudio AppImage path")
+    p_index.add_argument("--exe", default=None,
+                         help="OpenCADStudio executable path (default: $OCS_EXE, "
+                              "then $OCS_APPIMAGE, then the pinned install "
+                              "location for this platform)")
     p_index.add_argument("--json", default=None, help="write the index JSON here")
     p_index.add_argument("--workdir", default=None,
                          help="base dir for run evidence (fresh subdir; nothing deleted)")

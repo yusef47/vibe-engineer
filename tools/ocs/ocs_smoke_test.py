@@ -25,7 +25,9 @@ home directory, or symlinks) are always preserved.
 Usage:
   python3 tools/ocs/ocs_smoke_test.py [--exe PATH] [--workdir BASE_DIR]
 
-Exit code 0 iff every required step passed.
+On Windows run `python tools/ocs/ocs_smoke_test.py` (the same Python 3 stdlib
+code; the pinned binary is installed by `tools/ocs/setup.ps1` instead of
+`setup.sh`). Exit code 0 iff every required step passed.
 """
 
 from __future__ import annotations
@@ -45,7 +47,24 @@ import queue
 
 OCS_VERSION = "2026.46"
 OCS_REVISION = "8b4d27046040"  # git tag v2026.46 -> commit 8b4d27046040b27eb07d3faed7b7472bd7bdaea9
-DEFAULT_EXE = os.path.expanduser("~/.local/opt/OpenCADStudio-v2026.46/OpenCADStudio.AppImage")
+
+# Platform-specific pinned install locations (installed by tools/ocs/setup.sh
+# on Linux and tools/ocs/setup.ps1 on Windows; the binary is never committed).
+if sys.platform == "win32":
+    _LOCALAPPDATA = os.environ.get("LOCALAPPDATA") or os.path.join(
+        os.path.expanduser("~"), "AppData", "Local")
+    DEFAULT_EXE = os.path.join(_LOCALAPPDATA, "OpenCADStudio-v2026.46", "OpenCADStudio.exe")
+else:
+    DEFAULT_EXE = os.path.expanduser("~/.local/opt/OpenCADStudio-v2026.46/OpenCADStudio.AppImage")
+
+
+def resolve_exe(cli_value: str | None = None) -> str:
+    """Resolve the OCS executable: explicit --exe, then $OCS_EXE, then the
+    legacy $OCS_APPIMAGE (kept for Cloud Shell compatibility), then the
+    platform default install path."""
+    value = (cli_value or os.environ.get("OCS_EXE")
+             or os.environ.get("OCS_APPIMAGE") or DEFAULT_EXE)
+    return os.path.abspath(os.path.expanduser(value))
 
 FIXTURE_TEXT = "SMOKE-TEST SYNTHETIC FIXTURE"
 LAYER_BOUNDARY = "TEST-BOUNDARY"
@@ -246,6 +265,15 @@ def disk_free(path: str) -> int:
 RUN_DIR_PREFIX = "run-"
 
 
+def _is_fs_root(path: str) -> bool:
+    """True for a filesystem root: `/` on POSIX or any drive root (e.g. `C:\\`)
+    on Windows. POSIX paths have no drive part, so behavior there is unchanged."""
+    drive, _rest = os.path.splitdrive(path)
+    if drive:
+        return os.path.normpath(path) == os.path.normpath(drive + os.sep)
+    return os.path.normpath(path) == os.path.normpath(os.sep)
+
+
 def prepare_run_dir(base: str) -> tuple[str, str]:
     """Create a fresh, run-specific output directory under `base`.
 
@@ -253,13 +281,13 @@ def prepare_run_dir(base: str) -> tuple[str, str]:
     new uniquely named subdirectory, so pre-existing files always survive —
     including when an unsafe `--workdir` such as the repository root, the
     home directory, or a symlink to either is supplied. Symlinks are resolved
-    before use and the resolved path is reported. The filesystem root is
+    before use and the resolved path is reported. A filesystem root is
     refused outright.
 
     Returns ``(run_dir, resolved_base)``.
     """
     base_real = os.path.realpath(os.path.expanduser(str(base)))
-    if base_real == os.path.realpath(os.sep):
+    if _is_fs_root(base_real):
         raise ValueError(f"refusing filesystem root as --workdir base: {base!r}")
     if os.path.exists(base_real) and not os.path.isdir(base_real):
         raise ValueError(f"--workdir base exists but is not a directory: {base!r} -> {base_real!r}")
@@ -276,16 +304,19 @@ def prepare_run_dir(base: str) -> tuple[str, str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--exe", default=os.environ.get("OCS_APPIMAGE", DEFAULT_EXE),
-                    help="OpenCADStudio AppImage path (default: pinned v2026.46 location)")
+    ap.add_argument("--exe", default=None,
+                    help="OpenCADStudio executable path (default: $OCS_EXE, then "
+                         "$OCS_APPIMAGE for compatibility, then the pinned "
+                         "v2026.46 install location for this platform)")
     ap.add_argument("--workdir", default=None,
                     help="base directory; a fresh run-<timestamp>-<pid>/ subdir is "
                          "created inside it and nothing is ever deleted")
     args = ap.parse_args()
 
-    exe = os.path.abspath(os.path.expanduser(args.exe))
+    exe = resolve_exe(args.exe)
     if not os.path.isfile(exe):
-        die(f"OpenCADStudio executable not found: {exe} (run tools/ocs/setup.sh first)")
+        die(f"OpenCADStudio executable not found: {exe} "
+            f"(run tools/ocs/setup.ps1 on Windows or tools/ocs/setup.sh on Linux first)")
 
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     try:
