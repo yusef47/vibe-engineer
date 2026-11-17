@@ -24,7 +24,7 @@ Updated: 2026-11-18 (Africa/Cairo)
   real pinned binary in Cloud Shell, including the round-2/round-3
   trust-contract fixes described below (kept as history).
 - **Milestone 2.5 — Windows laptop reproducibility is complete on branch
-  `feat/windows-local-ocs` (pending Codex review; stop before merge).**
+  `feat/windows-local-ocs` (PR #3, pending Codex review; stop before merge).**
   Development moved to VS Code/OpenCode on the founder's Windows 11 laptop
   and Google Cloud Shell is paused. The pinned OCS v2026.46 now also runs on
   Windows through the official `windows-x86_64-portable.exe` release asset —
@@ -38,10 +38,7 @@ Updated: 2026-11-18 (Africa/Cairo)
 
 ## Review handoff for Codex (GitHub is the handoff channel)
 
-- **Branch:** `feat/windows-local-ocs` (tip: run `git rev-parse HEAD` on the
-  branch — a commit cannot name itself). PR to `main` opened after push;
-  the exact PR link is recorded in the "Windows milestone record" section
-  below once known.
+- **Branch:** `feat/windows-local-ocs` — **PR #3: https://github.com/yusef47/vibe-engineer/pull/3** (tip: run `git rev-parse HEAD` on the branch — a commit cannot name itself; PR #3 opened with the full summary, exact results, provenance, limitations and review focus).
 - **What changed and why (all in `tools/ocs/` unless noted):**
   1. `setup.ps1` (new): Windows mirror of `setup.sh` — disk-space check,
      pinned download to `%LOCALAPPDATA%\OpenCADStudio-v2026.46\`, SHA-256
