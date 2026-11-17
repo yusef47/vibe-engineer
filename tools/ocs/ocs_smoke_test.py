@@ -14,11 +14,16 @@ against the real binary, the minimal edit cycle Vibe Engineer depends on:
   7. save, close, reopen the edited copy and verify persistence,
   8. (extra evidence) document audit and verified save with reopen + hash.
 
-Every request and reply is appended verbatim to `<workdir>/requests.jsonl`
-and summarized in `<workdir>/smoke_report.txt` / `smoke_report.json`.
+Every request and reply is appended verbatim to `<run dir>/requests.jsonl`
+and summarized in `<run dir>/smoke_report.txt` / `smoke_report.json`.
+
+`--workdir` is only the base directory: each run creates its own fresh
+`run-<timestamp>-<pid>/` subdirectory inside it and never deletes anything,
+so pre-existing files (and unsafe bases such as the repository root, the
+home directory, or symlinks) are always preserved.
 
 Usage:
-  python3 tools/ocs/ocs_smoke_test.py [--exe PATH] [--workdir DIR]
+  python3 tools/ocs/ocs_smoke_test.py [--exe PATH] [--workdir BASE_DIR]
 
 Exit code 0 iff every required step passed.
 """
@@ -51,6 +56,23 @@ BYLAYER_COLOR = {"Index": 256}
 
 class StepFailure(Exception):
     """Raised when a step's assertion fails; message carries the evidence."""
+
+
+class StaleStateError(StepFailure):
+    """A mutation was refused because the caller's revision is behind.
+
+    The edit stops here on purpose: the caller must re-read the drawing and
+    review a new change plan before sending another edit. Carries the full
+    refusal reply as ``.reply``.
+    """
+
+    def __init__(self, reply: dict, revision):
+        self.reply = reply
+        super().__init__(
+            f"stale revision {revision!r} refused (code={reply.get('code')!r}): "
+            f"the edit was NOT executed. Re-read the drawing and review a new "
+            f"change plan before editing again. reply={json.dumps(reply, sort_keys=True)}"
+        )
 
 
 def utcnow() -> str:
@@ -125,8 +147,14 @@ class Serve:
         return self.send(request, timeout)
 
     def mutate(self, request: dict, document_id: int | None, revision: int | None,
-               timeout: float = 120.0, stale_retries: int = 1) -> dict:
-        """A mutation op: protocol-1 envelope, optimistic concurrency, stale retry.
+               timeout: float = 120.0) -> dict:
+        """A mutation op: protocol-1 envelope, optimistic concurrency.
+
+        The mutation is sent exactly once. If the build refuses it with
+        `stale_state` / `session_changed` (caller snapshot behind), the edit
+        stops: `StaleStateError` is raised and nothing is replayed. The caller
+        re-reads the drawing and reviews a new change plan before sending a
+        fresh edit — automatic replay would execute an unreviewed plan.
 
         `document_id=None` omits the field (document-creating ops such as
         `open` are refused when addressed to a closed document).
@@ -138,15 +166,8 @@ class Serve:
             req["revision"] = revision
         req.update(request)
         reply = self.send(req, timeout)
-        tries = 0
-        while reply.get("ok") is False and reply.get("code") == "stale_state" and tries < stale_retries:
-            tries += 1
-            state = self.read({"protocol": 1, "op": "state"})
-            new_rev = state.get("revision")
-            req = dict(req)
-            req["revision"] = new_rev
-            self._record("note", {"stale_state": True, "retry": tries, "new_revision": new_rev})
-            reply = self.send(req, timeout)
+        if reply.get("ok") is False and reply.get("code") in ("stale_state", "session_changed"):
+            raise StaleStateError(reply, revision)
         return reply
 
     def close(self) -> None:
@@ -162,8 +183,8 @@ class Serve:
 
 
 class Report:
-    def __init__(self, workdir: str):
-        self.workdir = workdir
+    def __init__(self, outdir: str):
+        self.outdir = outdir
         self.steps: list[dict] = []
         self.env: dict = {}
         self.started = time.time()
@@ -203,10 +224,10 @@ class Report:
         lines.append("")
         lines.append(f"verdict: {'PASS' if required_ok else 'FAIL'} (required steps); "
                      f"{'PASS' if all_ok else 'PASS/FAIL mixed in extra steps'} (all steps)")
-        path = os.path.join(self.workdir, "smoke_report.txt")
+        path = os.path.join(self.outdir, "smoke_report.txt")
         with open(path, "w", encoding="utf-8") as fh:
             fh.write("\n".join(lines) + "\n")
-        with open(os.path.join(self.workdir, "smoke_report.json"), "w", encoding="utf-8") as fh:
+        with open(os.path.join(self.outdir, "smoke_report.json"), "w", encoding="utf-8") as fh:
             json.dump({"env": self.env, "steps": self.steps,
                        "required_pass": required_ok, "all_pass": all_ok,
                        "generated": utcnow()}, fh, indent=1, ensure_ascii=False)
@@ -222,11 +243,44 @@ def disk_free(path: str) -> int:
     return shutil.disk_usage(path).free
 
 
+RUN_DIR_PREFIX = "run-"
+
+
+def prepare_run_dir(base: str) -> tuple[str, str]:
+    """Create a fresh, run-specific output directory under `base`.
+
+    The caller-supplied base is never deleted or modified beyond creating one
+    new uniquely named subdirectory, so pre-existing files always survive —
+    including when an unsafe `--workdir` such as the repository root, the
+    home directory, or a symlink to either is supplied. Symlinks are resolved
+    before use and the resolved path is reported. The filesystem root is
+    refused outright.
+
+    Returns ``(run_dir, resolved_base)``.
+    """
+    base_real = os.path.realpath(os.path.expanduser(str(base)))
+    if base_real == os.path.realpath(os.sep):
+        raise ValueError(f"refusing filesystem root as --workdir base: {base!r}")
+    if os.path.exists(base_real) and not os.path.isdir(base_real):
+        raise ValueError(f"--workdir base exists but is not a directory: {base!r} -> {base_real!r}")
+    os.makedirs(base_real, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S%f")
+    run_dir = os.path.join(base_real, f"{RUN_DIR_PREFIX}{stamp}-{os.getpid()}")
+    suffix = 0
+    while os.path.exists(run_dir):
+        suffix += 1
+        run_dir = os.path.join(base_real, f"{RUN_DIR_PREFIX}{stamp}-{os.getpid()}-{suffix}")
+    os.makedirs(run_dir)
+    return run_dir, base_real
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--exe", default=os.environ.get("OCS_APPIMAGE", DEFAULT_EXE),
                     help="OpenCADStudio AppImage path (default: pinned v2026.46 location)")
-    ap.add_argument("--workdir", default=None, help="working dir for fixtures and reports")
+    ap.add_argument("--workdir", default=None,
+                    help="base directory; a fresh run-<timestamp>-<pid>/ subdir is "
+                         "created inside it and nothing is ever deleted")
     args = ap.parse_args()
 
     exe = os.path.abspath(os.path.expanduser(args.exe))
@@ -234,25 +288,26 @@ def main() -> int:
         die(f"OpenCADStudio executable not found: {exe} (run tools/ocs/setup.sh first)")
 
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    workdir = os.path.abspath(args.workdir or os.path.join(repo_root, "tools", "ocs", "out"))
-    if os.path.isdir(workdir):
-        shutil.rmtree(workdir)
-    os.makedirs(workdir)
-    sys.stderr.write(f"workdir: {workdir}\n")
+    try:
+        run_dir, base_real = prepare_run_dir(args.workdir or os.path.join(repo_root, "tools", "ocs", "out"))
+    except ValueError as e:
+        die(str(e))
+    sys.stderr.write(f"run dir: {run_dir} (base preserved; nothing was deleted)\n")
 
-    fixture = os.path.join(workdir, "fixture_base.dxf")
-    edited = os.path.join(workdir, "fixture_edit.dxf")
-    verified = os.path.join(workdir, "fixture_verified.dxf")
-    stderr_log = os.path.join(workdir, "ocs_stderr.log")
+    fixture = os.path.join(run_dir, "fixture_base.dxf")
+    edited = os.path.join(run_dir, "fixture_edit.dxf")
+    verified = os.path.join(run_dir, "fixture_verified.dxf")
+    stderr_log = os.path.join(run_dir, "ocs_stderr.log")
 
-    rep = Report(workdir)
+    rep = Report(run_dir)
     rep.env_line("host.os", f"{platform.system()} {platform.release()} ({platform.machine()})")
     rep.env_line("host.python", platform.python_version())
     rep.env_line("ocs.exe", exe)
     rep.env_line("ocs.exe.size_bytes", os.path.getsize(exe))
     rep.env_line("ocs.exe.sha256", sha256_file(exe))
     rep.env_line("disk.free_before_run_bytes", disk_free(os.path.expanduser("~")))
-    rep.env_line("workdir", workdir)
+    rep.env_line("workdir.base", base_real)
+    rep.env_line("workdir.run", run_dir)
 
     # ---- S1: version banner of the pinned build -------------------------------
     t0 = time.time()
@@ -277,7 +332,7 @@ def main() -> int:
     srv = None
     try:
         srv = Serve(exe, stderr_path=stderr_log)
-        srv.transcript_path = os.path.join(workdir, "requests.jsonl")
+        srv.transcript_path = os.path.join(run_dir, "requests.jsonl")
         rep.env_line("ocs.serve.greeting", json.dumps(srv.greeting, sort_keys=True))
 
         # S2: greeting matches pinned version

@@ -10,11 +10,49 @@ Updated: 2026-11-17 (Africa/Cairo)
   CAD Studio binary, headless, in Google Cloud Shell. Full evidence:
   `tools/ocs/results/2026-11-17_v2026.46_cloudshell.md`; reproduction:
   `tools/ocs/README.md`.
+- Codex reviewed commit `15aa6d0` and raised two issues; both are fixed on
+  this branch (see "Review fixes" below) and covered by focused checks.
 - The GitHub repository is public (`https://github.com/yusef47/vibe-engineer`).
   Access works through the repository-scoped SSH deploy key
   (`~/.ssh/vibe_engineer_deploy`, never committed) via the `github-vibe` SSH
   alias.
 - No AI model, OpenRouter key, or application framework has been added.
+
+## Review fixes (Codex review of `15aa6d0`, fixed on this branch)
+
+1. **Safe workdir.** The smoke test used to `rmtree` the caller-supplied
+   `--workdir`. It now treats `--workdir` as a base directory and creates a
+   fresh `run-<timestamp>-<pid>/` subdirectory inside it; nothing is ever
+   deleted (symlinks are resolved first, the filesystem root and non-
+   directory bases are refused). Checked by `tools/ocs/test_safe_workdir.py`:
+   `6/6 checks passed` — pre-existing files survive (unit + end-to-end run of
+   the real script with a sentinel file in the base), symlinked bases resolve
+   safely, `/` and a file-base are refused untouched, and a source-level
+   guard asserts no `rmtree` exists in the tool.
+2. **Stale revision stops the edit.** `Serve.mutate()` no longer auto-refreshes
+   the revision and replays the mutation after a `stale_state` refusal. It
+   sends the mutation exactly once and raises `StaleStateError` (carrying the
+   full refusal reply); the caller must re-read `state`, review a new change
+   plan, and send a fresh edit. This intentionally deviates from the OCS
+   error text's blind-retry advice, per the review requirement and the
+   plan's rule that a stale plan must be re-reviewed, not replayed. Checked
+   by `tools/ocs/test_stale_revision.py`: `4/4 checks passed` — unit checks
+   prove exactly one send with the caller's revision preserved (for
+   `stale_state` and `session_changed`, plus the clean-reply path), and the
+   real-binary check proves a deliberately outdated revision is refused with
+   the entity verifiably unchanged (`color:"ByLayer"`), after which a
+   fresh-revision edit is accepted.
+
+Commands and exact results:
+
+```
+$ python3 tools/ocs/test_safe_workdir.py      → 6/6 checks passed, exit 0
+$ python3 tools/ocs/test_stale_revision.py    → 4/4 checks passed, exit 0
+$ python3 tools/ocs/ocs_smoke_test.py         → 15/15 steps PASS, exit 0
+```
+
+Full smoke test re-run after the fixes: all 15 steps PASS (~1.3 s), outputs in
+`tools/ocs/out/run-20261117T…/` — see `smoke_report.txt` in the newest run.
 
 ## Tested Open CAD Studio build (pinned)
 
@@ -80,7 +118,9 @@ Start the milestone-2 read layer ("drawing memory", PLAN phase 2) on the same
 pinned build: a small Python module that opens a DXF/DWG through `--serve`,
 builds a local index (handles → type/layer/geometry/text with source
 revisions), distinguishes read facts from computed values, and reuses
-`tools/ocs/ocs_smoke_test.py`'s `Serve` class. First acceptance: re-count
-fixture entities and detect a manual file change between reads (stale-index
-detection), with synthetic fixtures only. GUI (`--mcp`) validation stays on
-the workstation list.
+`tools/ocs/ocs_smoke_test.py`'s `Serve` class — keeping its two safety rules:
+never delete caller data, and stop on a stale revision (re-read and re-plan,
+never auto-replay an edit). First acceptance: re-count fixture entities and
+detect a manual file change between reads (stale-index detection), with
+synthetic fixtures only. GUI (`--mcp`) validation stays on the workstation
+list.

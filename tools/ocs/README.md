@@ -24,12 +24,20 @@ bash tools/ocs/setup.sh
 
 # 2. Run the smoke test (stdlib Python 3 only; runtime ~2 s)
 python3 tools/ocs/ocs_smoke_test.py
+
+# 3. Focused checks for the two safety-critical behaviors
+python3 tools/ocs/test_safe_workdir.py      # workdir never deletes caller data
+python3 tools/ocs/test_stale_revision.py    # stale revision stops the edit
 ```
 
-Options: `--exe PATH` (other binary), `--workdir DIR` (default
-`tools/ocs/out/`, cleaned at the start of every run).
+Options: `--exe PATH` (other binary), `--workdir BASE_DIR` (base directory;
+a fresh `run-<timestamp>-<pid>/` subdirectory is created inside it — the
+base and everything already in it is never deleted or modified, so unsafe
+bases such as the repository root, the home directory, or symlinks are
+preserved; the filesystem root is refused outright).
 
-Outputs in `tools/ocs/out/` (gitignored, generated locally, never committed):
+Outputs land in `tools/ocs/out/run-*/` (gitignored, generated locally,
+never committed):
 
 - `requests.jsonl` — every JSON request and reply, verbatim, with timestamps.
 - `smoke_report.txt` / `smoke_report.json` — per-step PASS/FAIL, environment,
@@ -38,6 +46,23 @@ Outputs in `tools/ocs/out/` (gitignored, generated locally, never committed):
   they do not affect headless operations).
 - `fixture_base.dxf`, `fixture_edit.dxf`, `fixture_verified.dxf` — synthetic
   CAD outputs (gitignored by `*.dxf`).
+
+## Safety behavior (review-driven)
+
+- **Never deletes caller data.** The tool contains no `rmtree` at all
+  (enforced by `tools/ocs/test_safe_workdir.py`). `--workdir` is only a base;
+  each run writes to its own fresh subdirectory, so pre-existing files survive
+  any run, even with a dangerous base path.
+- **A stale revision stops the edit.** `Serve.mutate()` sends a mutation
+  exactly once. If the build refuses it with `stale_state`/`session_changed`
+  (the caller's revision is behind), `mutate()` raises `StaleStateError` and
+  does NOT replay the mutation with a refreshed revision — an automatic
+  replay would execute an unreviewed change plan against a drawing someone
+  else may have edited. The caller must re-read `state`, review, and send a
+  fresh edit with the new revision (this is deliberate; the OCS error text
+  itself suggests a blind retry, which this tool intentionally does not do).
+  Proven by `tools/ocs/test_stale_revision.py`, including against the real
+  binary: the refused edit leaves the entity verifiably unchanged.
 
 ## What the test proves (required steps S1–S13)
 
