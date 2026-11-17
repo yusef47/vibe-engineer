@@ -2,8 +2,113 @@
 
 This directory holds the milestone-1 verification of the Open CAD Studio (OCS)
 integration: a headless, reproducible smoke test that proves the minimal
-read/edit/undo/save/reopen cycle against the real OCS binary. No AI model,
-no OpenRouter, no application framework — just the CAD integration evidence.
+read/edit/undo/save/reopen cycle against the real OCS binary. It also holds
+the milestone-2 read/index layer built on top of that proven connection.
+No AI model, no OpenRouter, no application framework — just the CAD
+integration evidence and a deterministic drawing index.
+
+## Milestone 2 — drawing read/index layer (`drawing_index.py`)
+
+A small stdlib-only Python layer that opens an EXISTING DXF through the real
+pinned OCS `--serve` channel (reusing milestone-1's `Serve`) and builds a
+local index recording, per entity: handle, type, layer, the geometry/text
+fields OCS actually returned, and full provenance (source file + SHA-256,
+document revision, document id, entity handle, OCS version, the supplying
+`query` op). Anything OCS did not return is recorded as the sentinel
+`unknown` — never invented. Every entity carries `classification: null`:
+type/layer are recorded verbatim as CAD data and are NOT structural claims;
+labels such as "column" stay unconfirmed until an engineer confirms them.
+
+### Reproduce
+
+```sh
+# 1. Install the pinned release (skip if ~/.local/opt/OpenCADStudio-v2026.46 exists)
+bash tools/ocs/setup.sh
+
+# 2. Verify the read/index layer against the real binary (also runs the
+#    milestone-1 smoke test once as the fixture generator; ~6.5 s total)
+python3 tools/ocs/test_drawing_index.py
+
+# 3. Build an index for an existing drawing (explicit indexing operation)
+python3 tools/ocs/drawing_index.py index --file <drawing.dxf> --json idx.json
+
+# 4. Deterministic queries from the saved index (no OCS process needed;
+#    the source file hash is re-checked before every answer)
+python3 tools/ocs/drawing_index.py query --index idx.json --query count        # -> 6
+python3 tools/ocs/drawing_index.py query --index idx.json --query types        # Circle 1 / Line 4 / Text 1
+python3 tools/ocs/drawing_index.py query --index idx.json --query layers       # TEST-BOUNDARY 4 / TEST-SYMBOLS 2
+python3 tools/ocs/drawing_index.py query --index idx.json --query text:SYNTHETIC
+python3 tools/ocs/drawing_index.py query --index idx.json --query handle:8A    # full record + provenance
+```
+
+Sample `index` output (synthetic milestone-1 fixture):
+
+```
+drawing index built (vibe-engineer/drawing-index@1)
+  source:       /…/fixture_base.dxf
+  sha256:       59052920c8a3985bdb96078c271af0b5b94d9e85ecd8df989c416961b4f4d7ce (112123 bytes)
+  ocs:          2026.46 session 4db505dd2c7cc5b0aa9c9431c7fd4022 mode headless
+  document:     id 2 revision 0 dirty=False path /…/fixture_base.dxf
+  entities:     6 (Circle 1, Line 4, Text 1)
+  layers:       TEST-BOUNDARY 4, TEST-SYMBOLS 2
+  unknowns:     1 recorded
+    - ocs_file_identity: unsupported_by_pinned_build
+```
+
+### Staleness and safety (what the tests prove)
+
+- **Every accessor is gated.** All public query paths — `count`,
+  `count_by_type`, `count_by_layer`, `entity`, `search_text`, `entities`,
+  `summary`, and every CLI query form including `handles` — pass the
+  freshness gate before answering; a regression test patches the gate and
+  proves no accessor can answer without it. Only the persistence helpers
+  (`to_json`/`to_json_dict`/`from_json`) and the raw `data` container are
+  exempt: they move or expose the stored snapshot itself, they never
+  interpret it; a loaded index is gate-checked when queried.
+- **File staleness.** Every query re-hashes the source file first. After the
+  drawing is changed through OCS (or by any other means), every query form
+  refuses with exit code 3, naming the indexed and current hashes and the
+  rebuild path — answers are never served from a stale index. Rebuilding is
+  an explicit new indexing operation (`drawing_index.py index` /
+  `build_index()` / `index_document()`).
+- **Live staleness.** With a live session context (`srv=…, document_id=…`),
+  the supplied `document_id` must equal the index's stored `ocs.document_id`
+  (a session can hold two documents at the same revision; validating against
+  the other one proves nothing), and the live session id, the document
+  identity (registered path) and the document revision are compared with
+  the indexed ones; any mismatch refuses. An unsaved in-session edit (which
+  the file hash cannot see) is refused; a different session is refused too
+  (document ids and revision counters are per-session, so a cross-session
+  comparison would be meaningless).
+- **Fail-closed indexes.** An index built from an unsaved (dirty) OCS
+  document, or one without a readable source file/hash (`source_sha256`
+  null), carries in-session facts that the disk cannot validate. Such an
+  index REQUIRES the matching live session, document and revision for every
+  query and refuses otherwise (`IndexUnverifiableError`, CLI exit 3): no
+  session context, a different session, a closed document, or an unreadable
+  session all refuse with the reason. Verified on the real binary (a dirty
+  index answers only while its document is open in the anchoring session).
+- **Read-only indexing.** The source is hashed before and after the read
+  pass; a hash change aborts indexing with no index produced. Documents the
+  caller already had open are indexed but never closed by this layer; a
+  document the layer itself opened is closed afterwards.
+- **Inherited safety rules.** `Serve.mutate()` is reused unchanged: a
+  mutation is sent exactly once and a `stale_state` refusal raises
+  `StaleStateError` (never auto-replayed); the tool contains no `rmtree`.
+- **No invented facts.** Missing values are recorded as the sentinel
+  `unknown`; unsupported API surface is recorded with the verbatim error
+  (`file_identity` is advertised by `capabilities` but answers `unknown op`
+  on the pinned build). Caution observed on the real build: sending ANY op
+  as a protocol-1 mutation envelope can advance the document revision and
+  mark the document dirty even when the op itself fails — the read layer
+  probes only with plain passive sends.
+
+Exit codes: `query` 0 = answered, 3 = stale index refusal, 2 = usage;
+`index`/tests exit 0 only when they really passed.
+
+Recorded evidence for milestone 2: `results/2026-11-17_drawing_index_v2026.46.md`.
+Known limits (pagination path, entity-type coverage, text search scope) are
+listed at the end of that file.
 
 ## What is pinned
 

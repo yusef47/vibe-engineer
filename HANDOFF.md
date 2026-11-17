@@ -5,20 +5,191 @@ Updated: 2026-11-17 (Africa/Cairo)
 ## Current state
 
 - Product direction and execution gates are documented in `PLAN.md`.
-- **Milestone 1 (deterministic CAD integration smoke test) is complete on
-  branch `feat/ocs-smoke-test`.** All 15 steps pass against the real Open
-  CAD Studio binary, headless, in Google Cloud Shell. Full evidence:
+- **Milestone 1 (deterministic CAD integration smoke test) is complete and
+  merged to `main` (PR #1).** All 15 steps pass against the real Open CAD
+  Studio binary, headless, in Google Cloud Shell. Full evidence:
   `tools/ocs/results/2026-11-17_v2026.46_cloudshell.md`; reproduction:
   `tools/ocs/README.md`.
-- Codex reviewed commit `15aa6d0` and raised two issues; both are fixed on
-  this branch (see "Review fixes" below) and covered by focused checks.
+- **Milestone 2 (drawing read/index layer) is complete on branch
+  `feat/drawing-index`.** A small stdlib-only module
+  (`tools/ocs/drawing_index.py`) opens an existing DXF through the real
+  pinned OCS `--serve` channel, builds a provenance-bearing index (source
+  path + SHA-256, OCS version/session/document id/revision, per-entity
+  handle/type/layer/geometry/text exactly as returned, explicit `unknown`
+  sentinel for anything missing), and answers deterministic queries
+  (count, count by type/layer, lookup by handle, text search) behind two
+  staleness gates: the source-file hash and the live document revision.
+  Evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`;
+  reproduction: `tools/ocs/README.md` (milestone-2 section).
+  After Codex review of `fc733ac`, two trust-contract gaps were fixed
+  (see "Milestone 2 review round 2" below), plus the round-3 document-ID
+  fix: 23/23 checks pass (12 unit + 11 real binary); REAL-BINARY
+  INTEGRATION: VERIFIED. Codex review of the branch tip is the next gate
+  (branch pushed, not merged).
+
+## Review handoff for Codex (GitHub is the handoff channel)
+
+- **Branch:** `feat/drawing-index` — https://github.com/yusef47/vibe-engineer/tree/feat/drawing-index
+- **Round-3 fix commit:** the current tip of this branch — the commit carrying
+  the `drawing_index.py` / `test_drawing_index.py` changes TOGETHER with this
+  HANDOFF.md update (get its exact SHA with `git rev-parse HEAD` on the
+  branch; a commit cannot embed its own SHA). `3afb678` = the round-2 fix
+  Codex reviewed; `7439fcd` = docs-only handoff metadata (no code change —
+  the document-ID fix was still missing there and is now implemented at the
+  branch tip). Not merged; no PR opened.
+- **What changed and why:**
+  1. Review round 2 (`3afb678`): every public query path now passes the
+     freshness gate (`entities()`, `summary()`, CLI `handles` previously
+     exposed facts unchecked). `U8` pins the accessor surface reflectively;
+     `R9` proves the CLI `handles` refusal end-to-end on the real binary.
+  2. Review round 2 (`3afb678`): indexes whose facts the disk cannot validate
+     (built from an unsaved/dirty OCS document, or with `source_sha256=null`)
+     now fail closed: matching live session + document + revision required
+     for every query, with session identity verified on all live checks
+     (document ids and revision counters are per-session). New exception
+     `IndexUnverifiableError` (subclass of `IndexStaleError`; CLI prints
+     `UNVERIFIABLE INDEX`, exit 3). Unit: `U9`/`U10`; real binary:
+     `R10`/`R11`; session identity for clean indexes: `U11`.
+  3. **Review round 3 (branch tip): document-ID identity in the live gate.**
+     `check_fresh(srv=..., document_id=...)` used the supplied id only to
+     find an entry in the live state; it never compared it with the index's
+     stored `ocs.document_id`. In a session with two documents at the same
+     revision, a live check could be "validated" against the OTHER document
+     (same session, entry found, same revision, and no path check because
+     neither document has a file). The supplied `document_id` must now equal
+     the indexed one before the live check is accepted; a mismatch refuses
+     with `IndexStaleError` naming both ids. The check sits after the
+     session-identity check and before the entry lookup (refusal hierarchy
+     session → document → path → revision). New `U12` pins the exact case:
+     two no-file documents, same session, same revision — the live check on
+     the wrong document id refuses; the indexed document still answers.
+  Full rationale and evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`
+  ("Review round 2" and "Review round 3" sections).
+- **Exact test commands, results, skips (after the round-3 fix):**
+
+```
+$ python3 tools/ocs/test_drawing_index.py   → 23/23 checks PASS (unit 12/12, real binary 11/11), exit 0, 2 consecutive runs
+$ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS, exit 0 (milestone-1 regression)
+$ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed, exit 0
+$ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
+```
+
+  Skips: **none** — the pinned binary was present for every real check.
+  (If the binary is missing on another machine, the real checks report
+  SKIP and the verdict explicitly says integration was NOT verified.)
+- **Known limitations / blockers:** none blocking review. Unverified
+  areas are listed below ("Known limits and unverified areas") and at the
+  end of the results file: pagination offset path, entity-type coverage
+  beyond Line/Circle/Text, DWG/blocks/XREFs/layouts, GUI channels,
+  field-level provenance via the verbatim `raw` payload.
+- **What Codex should review next (round 3):** the document-ID equality
+  check in `DrawingIndex.check_fresh` (`tools/ocs/drawing_index.py`) — its
+  placement (after session identity, before entry lookup) and the refusal
+  as `IndexStaleError` naming both ids; and new `U12`'s two-document,
+  same-session, same-revision, no-file scenario. Then re-confirm the
+  round-2 semantics if useful: fail-closed trust boundary in
+  `check_fresh`/`_live_required_reason`, `IndexUnverifiableError` taxonomy,
+  and U8's exempt list (persistence helpers + raw `data` container). If
+  accepted, the branch can be merged to `main` (PR #2).
 - The GitHub repository is public (`https://github.com/yusef47/vibe-engineer`).
   Access works through the repository-scoped SSH deploy key
   (`~/.ssh/vibe_engineer_deploy`, never committed) via the `github-vibe` SSH
   alias.
 - No AI model, OpenRouter key, or application framework has been added.
+  No structural classification is produced anywhere (every entity record
+  keeps `classification: null` until an engineer confirms labels).
 
-## Review fixes (Codex review of `15aa6d0`, fixed on this branch)
+## Milestone 2 — what works (verified against the real pinned binary)
+
+All commands and exact outputs: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`.
+
+```
+$ python3 tools/ocs/test_drawing_index.py   → 23/23 checks PASS (unit 12/12, real 11/11), exit 0
+$ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS (regression check after the work)
+$ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed
+$ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed
+```
+
+Proven (R1–R11, real pinned OCS v2026.46, headless):
+
+- R1 the binary is the pinned release (SHA-256 asserted against the pinned digest).
+- R2 the fixture is produced by the milestone-1 tooling itself (the test runs
+  `ocs_smoke_test.py`, which also re-proved milestone 1 with zero regressions).
+- R3 the index built through `--serve` matches a fresh live `query` of the
+  same file exactly: 6 entities, handles `86`–`8B`, per-handle
+  type/layer/space/owner/color/geometry/text/bounds equal; counts
+  Line 4 / Circle 1 / Text 1, layers TEST-BOUNDARY 4 / TEST-SYMBOLS 2.
+- R4 indexing does not modify the source (hash unchanged; also hashed
+  before/after inside every build).
+- R5 a copy changed THROUGH OCS (bounded edit + save) makes the old index
+  refuse every query form (count/lookup/search/counts) with both hashes
+  named; an explicit re-index accepts the file and records the new hash.
+- R6 an unsaved in-session edit (file hash unchanged) is caught only by the
+  live revision gate: `live document revision 1 != indexed revision 0`
+  refused; the file-hash-only answer stayed correct; explicit rebuild
+  accepted.
+- R7 `capabilities` advertises `file_identity` but the pinned build answers
+  `unknown op: file_identity` — recorded in the index as unsupported, with
+  the verbatim reply. (Safety note learned en route: sending ANY op as a
+  protocol-1 mutation envelope can advance the document revision and mark
+  the document dirty even when the op fails; the read layer therefore uses
+  plain passive sends only — indexing leaves the document rev 0, dirty=False.)
+- R8 no structural classification exists anywhere in the index
+  (`classification: null` on every record; type/layer verbatim).
+- R9 the CLI `handles` form (and every other public accessor) refuses after
+  the source changed through OCS: exit 3 with both hashes named; U8 is the
+  reflective guard proving all 7 fact accessors route through the gate.
+- R10 an index built from an unsaved (dirty) document fails closed on the
+  real binary: answers only with the matching live session + document +
+  revision; no-context, closed-document and different-session cases refuse.
+- R11 an index without a readable source file/hash fails closed the same way.
+
+Deterministic queries (CLI, no OCS needed for `query`): `count`, `types`,
+`layers`, `handles`, `handle:<H>` (full record + provenance), `text:<STR>`
+(substring over recorded text values only; unknown type/missing text never
+guessed). `query` exit codes: 0 answered, 3 stale-or-unverifiable refusal,
+2 usage.
+
+## Milestone 2 review round 2 (Codex on `fc733ac`)
+
+Two trust-contract gaps were raised and fixed on this branch:
+
+1. **Every public query path gated.** `entities()`, `summary()` and the CLI
+   `handles` form used to expose drawing facts without the freshness gate.
+   They now take the optional live context and gate like the other
+   accessors; U8 reflectively pins the public surface (exempt: persistence
+   helpers `to_json`/`to_json_dict`/`from_json` and the raw `data`
+   container) and proves a patched gate makes every accessor refuse instead
+   of answering. R9 proves the CLI regression end-to-end against the real
+   binary (fresh 6-handle answer → OCS change → exit 3 with both hashes).
+2. **Fail-closed indexes that disk cannot validate.** An index built from a
+   dirty/unsaved OCS document or with `source_sha256=null` now REQUIRES the
+   matching live session, document and revision for EVERY query (session
+   identity checked too — document ids and revision counters are
+   per-session). Missing/closed/different/unreadable session context
+   refuses with `IndexUnverifiableError` (subclass of `IndexStaleError`;
+   CLI prints `UNVERIFIABLE INDEX`, exit 3). Clean file-anchored indexes
+   keep their semantics: optional live check, closed document is not false
+   staleness (U7 still passes), and the file hash remains the base gate.
+   U9/U10 pin the unit behavior, R10/R11 repeat it on the real binary.
+
+Recovery path unchanged: explicit new indexing operations only
+(`drawing_index.py index`, `build_index()`, `index_document()`).
+
+## Milestone 2 review round 3 (Codex on `3afb678`/`7439fcd`)
+
+One live-gate hole remained: the supplied `document_id` was used only to find
+an entry in the live state and was never compared with the index's stored
+`ocs.document_id`. With two documents in one session at the same revision (and
+no file paths, so no path check), a live check could pass against the WRONG
+document. Fixed at the branch tip: `check_fresh` now refuses with
+`IndexStaleError` naming both ids unless the supplied id equals the indexed
+one, before looking up any live entry. New `U12` (two no-file documents, same
+session, same revision) proves the wrong-document check refuses while the
+indexed document still answers. Full suite re-run: 23/23 (unit 12/12, real
+11/11), twice, no skips; milestone-1 suites still 15/15, 6/6, 4/4.
+
+## Review fixes (Codex review of milestone-1 `15aa6d0`, merged in PR #1)
 
 1. **Safe workdir.** The smoke test used to `rmtree` the caller-supplied
    `--workdir`. It now treats `--workdir` as a base directory and creates a
@@ -109,18 +280,30 @@ is available so the AppImage runs without extraction.
 
 ## Disk usage
 
-`/home`: 3.9 GB free of 4.8 GB. OCS install 55 MB; smoke-test outputs
-(`tools/ocs/out/`, gitignored) < 1 MB per run.
+`/home`: 3.9 GB free of 4.8 GB (unchanged by milestone 2). OCS install 55 MB
+(not committed); run outputs (`tools/ocs/out/`, gitignored) 6.5 MB total;
+saved index JSON ≈ 16 KB per 6-entity fixture. No new dependencies — Python 3
+stdlib only.
+
+## Known limits and unverified areas (milestone 2)
+
+Full list with evidence: end of `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`.
+Summary: pagination's `next_offset` path never triggered at fixture scale
+(loop is defensive, unverified); only Line/Circle/Text exercised (whatever
+types OCS returns are stored verbatim; Arc/Polyline/Insert/MText unverified);
+text search is a local substring match (no fuzzy/semantic matching — no AI in
+this milestone); per-entity provenance, with field-level provenance covered by
+the verbatim `raw` payload; DWG, blocks with attributes, XREFs, layouts,
+locked/frozen layers not exercised; GUI (`--mcp`) still workstation-only.
 
 ## Next concrete task
 
-Start the milestone-2 read layer ("drawing memory", PLAN phase 2) on the same
-pinned build: a small Python module that opens a DXF/DWG through `--serve`,
-builds a local index (handles → type/layer/geometry/text with source
-revisions), distinguishes read facts from computed values, and reuses
-`tools/ocs/ocs_smoke_test.py`'s `Serve` class — keeping its two safety rules:
-never delete caller data, and stop on a stale revision (re-read and re-plan,
-never auto-replay an edit). First acceptance: re-count fixture entities and
-detect a manual file change between reads (stale-index detection), with
-synthetic fixtures only. GUI (`--mcp`) validation stays on the workstation
-list.
+After Codex review/merge of `feat/drawing-index`: milestone 3 — attach the
+conversation layer (OpenRouter model, per PLAN phase 3) to this index so
+answers cite index facts with their provenance (file, revision, handle), and
+the first bounded edit proposals flow through the existing `Serve.mutate()`
+rules (plan → review → one send → verify, stop on stale revision). Before
+that, optionally: extend the fixture set to more entity types (arc, polyline,
+insert-with-attributes — still synthetic) to widen index coverage, and
+engineer-confirmed classification as an explicit, separate data flow (never
+inferred from geometry/layer names).
