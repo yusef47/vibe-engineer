@@ -21,25 +21,40 @@ labels such as "column" stay unconfirmed until an engineer confirms them.
 
 ### Reproduce
 
+On Windows (PowerShell on the dev laptop; `python` is the Python 3 launcher):
+
+```powershell
+# 1. Install the pinned release (skip if %LOCALAPPDATA%\OpenCADStudio-v2026.46 exists)
+powershell -ExecutionPolicy Bypass -File tools\ocs\setup.ps1
+
+# 2. Verify the read/index layer against the real binary (also runs the
+#    milestone-1 smoke test once as the fixture generator; ~2–3 min total)
+python tools\ocs\test_drawing_index.py
+
+# 3. Build an index for an existing drawing (explicit indexing operation)
+python tools\ocs\drawing_index.py index --file <drawing.dxf> --json idx.json
+
+# 4. Deterministic queries from the saved index (no OCS process needed;
+#    the source file hash is re-checked before every answer)
+python tools\ocs\drawing_index.py query --index idx.json --query count        # -> 6
+python tools\ocs\drawing_index.py query --index idx.json --query types        # Circle 1 / Line 4 / Text 1
+python tools\ocs\drawing_index.py query --index idx.json --query layers       # TEST-BOUNDARY 4 / TEST-SYMBOLS 2
+python tools\ocs\drawing_index.py query --index idx.json --query text:SYNTHETIC
+python tools\ocs\drawing_index.py query --index idx.json --query handle:8A    # full record + provenance
+```
+
+On Linux (Cloud Shell, paused but still supported; `python3`):
+
 ```sh
 # 1. Install the pinned release (skip if ~/.local/opt/OpenCADStudio-v2026.46 exists)
 bash tools/ocs/setup.sh
 
-# 2. Verify the read/index layer against the real binary (also runs the
-#    milestone-1 smoke test once as the fixture generator; ~6.5 s total)
+# 2–4: the same commands with python3, e.g.
 python3 tools/ocs/test_drawing_index.py
-
-# 3. Build an index for an existing drawing (explicit indexing operation)
-python3 tools/ocs/drawing_index.py index --file <drawing.dxf> --json idx.json
-
-# 4. Deterministic queries from the saved index (no OCS process needed;
-#    the source file hash is re-checked before every answer)
-python3 tools/ocs/drawing_index.py query --index idx.json --query count        # -> 6
-python3 tools/ocs/drawing_index.py query --index idx.json --query types        # Circle 1 / Line 4 / Text 1
-python3 tools/ocs/drawing_index.py query --index idx.json --query layers       # TEST-BOUNDARY 4 / TEST-SYMBOLS 2
-python3 tools/ocs/drawing_index.py query --index idx.json --query text:SYNTHETIC
-python3 tools/ocs/drawing_index.py query --index idx.json --query handle:8A    # full record + provenance
 ```
+
+Evidence recorded for Windows (2026-11-18):
+`results/2026-11-18_v2026.46_windows_local.md`.
 
 Sample `index` output (synthetic milestone-1 fixture):
 
@@ -114,14 +129,43 @@ listed at the end of that file.
 
 | Item | Value |
 |---|---|
-| Open CAD Studio release | `v2026.46` |
+| Open CAD Studio release | `v2026.46` (2026-11-15) |
 | Exact commit | `8b4d27046040b27eb07d3faed7b7472bd7bdaea9` |
-| Linux asset | `OpenCADStudio-v2026.46-linux-x86_64.AppImage` (56 MB) |
-| Asset SHA-256 | `267adab0d5aea632e07da16404d7d3255bd0b05fecda60f6a71630b5fab0061c` |
-| Automation channel | `--serve` (one JSON request per line over stdin/stdout; no display needed) |
+| Windows asset | `OpenCADStudio-v2026.46-windows-x86_64-portable.exe` (~186 MB), installed to `%LOCALAPPDATA%\OpenCADStudio-v2026.46\OpenCADStudio.exe` by `setup.ps1` |
+| Windows asset SHA-256 | `9492830b7d2b8d6e4f2cedf1e8ac47c6025757e6e30fdad687df6f5209064989` (official GitHub release-asset digest) |
+| Linux asset | `OpenCADStudio-v2026.46-linux-x86_64.AppImage` (56 MB), installed to `~/.local/opt/OpenCADStudio-v2026.46/OpenCADStudio.AppImage` by `setup.sh` |
+| Linux asset SHA-256 | `267adab0d5aea632e07da16404d7d3255bd0b05fecda60f6a71630b5fab0061c` (official GitHub release-asset digest) |
+| Automation channel | `--serve` (one JSON request per line over stdin/stdout; no display needed on either platform) |
+| Executable override | `--exe PATH`, or `$OCS_EXE` (`$OCS_APPIMAGE` still honored for compatibility); binary digests are asserted per platform by `test_drawing_index.py` |
 | Interface docs | `docs/automation/README.md`, `docs/automation/API-SPEC.md`, `docs/automation/native.md` in the OpenCADStudio repo at tag `v2026.46` |
 
-## Reproduce in Google Cloud Shell (or any Linux x86_64 box)
+## Reproduce on the Windows dev laptop (primary environment)
+
+```powershell
+# 1. Install the pinned release (verifies SHA-256 BEFORE executing; ~186 MB)
+powershell -ExecutionPolicy Bypass -File tools\ocs\setup.ps1
+
+# 2. Run the smoke test (stdlib Python 3 only; runtime ~2 s)
+python tools\ocs\ocs_smoke_test.py
+
+# 3. Focused checks for the two safety-critical behaviors
+python tools\ocs\test_safe_workdir.py       # workdir never deletes caller data
+python tools\ocs\test_stale_revision.py     # stale revision stops the edit
+```
+
+Notes:
+
+- The portable exe is a GUI-subsystem binary; `setup.ps1` therefore reads the
+  real exit code via `Start-Process -Wait` (PowerShell's `&` operator does
+  not wait for it and leaves `$LASTEXITCODE` unset). Python `subprocess`
+  behaves normally.
+- The exe is verified against the pinned SHA-256 before its first execution.
+- Rare transient flake: if a `save` step reports `os error 1175` ("Unable to
+  remove the file to be replaced"), an antivirus/indexer scan held the file
+  open for a moment — re-run the suite. No automatic retry exists on purpose.
+- Full recorded evidence: `results/2026-11-18_v2026.46_windows_local.md`.
+
+## Reproduce in Google Cloud Shell (or any Linux x86_64 box) — paused
 
 ```sh
 # 1. Install the pinned release (checks disk space, verifies SHA-256, ~58 MB)
@@ -200,17 +244,28 @@ reopens, returns the SHA-256, which is cross-checked).
 
 ## Recorded results
 
-See `results/2026-11-17_v2026.46_cloudshell.md` for the full transcript
-summary of the run on Google Cloud Shell.
+- `results/2026-11-17_v2026.46_cloudshell.md` — full transcript of the
+  milestone-1 run on Google Cloud Shell.
+- `results/2026-11-17_drawing_index_v2026.46.md` — milestone-2 evidence
+  (Cloud Shell binary).
+- `results/2026-11-18_v2026.46_windows_local.md` — Windows laptop evidence:
+  asset provenance, 15/15 smoke, 23/23 drawing-index (0 skips), 6/6
+  safe-workdir, 4/4 stale-revision, plus the Windows-specific notes and the
+  one observed transient save flake.
 
 ## Known environment notes
 
 - Cloud Shell has no GPU: OCS logs `[gpu] probe vulkan: FAILED / [gpu] probe
   gl: FAILED` and falls back to software/compatibility rendering. Headless
-  automation ops are unaffected.
+  automation ops are unaffected. The Windows laptop instead probes dx12
+  successfully (Intel Iris Xe) — also irrelevant to `--serve`.
 - The AppImage runs directly (FUSE 2.9.9 is present in Cloud Shell). If FUSE
   is missing on another machine, use
   `./OpenCADStudio.AppImage --appimage-extract` and run `squashfs-root/AppRun`.
+- On Windows the pinned portable exe is a GUI-subsystem binary: PowerShell's
+  `&` does not wait for it (no `$LASTEXITCODE`) — `setup.ps1` uses
+  `Start-Process -Wait`; Python `subprocess` works normally. It was verified
+  against the pinned SHA-256 before its first run, per the safety rule.
 - The `--mcp` and GUI channels still need a display (xvfb or a desktop); they
   were deliberately not used here. Viewport capture (`ocs_capture`) answers
   `gui_required` on `--serve`.

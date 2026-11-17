@@ -68,7 +68,11 @@ def b_symlinked_base() -> str:
         with open(keep, "w") as fh:
             fh.write("x")
         link = os.path.join(tmp, "link")
-        os.symlink(real, link)
+        try:
+            os.symlink(real, link, target_is_directory=True)  # flag needed on Windows; ignored on POSIX
+        except OSError:
+            return ("SKIPPED symlink part (symlink privilege unavailable on this "
+                    "Windows session); non-symlink bases covered by A/C/D")
         run_dir, resolved = ocs.prepare_run_dir(link)
         assert os.path.isfile(keep)
         assert resolved == os.path.realpath(real)
@@ -85,7 +89,10 @@ def c_root_refused() -> str:
         raise AssertionError("/ was not refused")
     with tempfile.TemporaryDirectory() as tmp:
         link = os.path.join(tmp, "rootlink")
-        os.symlink("/", link)
+        try:
+            os.symlink("/", link, target_is_directory=True)  # flag needed on Windows; ignored on POSIX
+        except OSError:
+            return "/ refused without creating anything; symlink part SKIPPED (no symlink privilege)"
         try:
             ocs.prepare_run_dir(link)
         except ValueError:
@@ -117,7 +124,7 @@ def d_end_to_end_preserves_sentinel() -> str:
         sentinel = os.path.join(base, "KEEP_ME.txt")
         with open(sentinel, "w") as fh:
             fh.write("sentinel-contents")
-        exe = os.path.expanduser(os.environ.get("OCS_APPIMAGE") or ocs.DEFAULT_EXE)
+        exe = ocs.resolve_exe()
         if not os.path.isfile(exe):
             return "SKIPPED end-to-end part (OpenCADStudio binary not installed)"
         r = subprocess.run(
