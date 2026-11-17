@@ -25,6 +25,56 @@ Updated: 2026-11-17 (Africa/Cairo)
   (see "Milestone 2 review round 2" below): 22/22 checks pass (11 unit +
   11 real binary); REAL-BINARY INTEGRATION: VERIFIED. Codex review of the
   fix commit is the next gate (branch pushed, not merged).
+
+## Review handoff for Codex (GitHub is the handoff channel)
+
+- **Branch:** `feat/drawing-index` — https://github.com/yusef47/vibe-engineer/tree/feat/drawing-index
+- **Fix commit:** `3afb678d22770def00dc557f35e5452499d719ba`
+  ("Fix Codex review: gate every accessor; fail closed on unverifiable
+  indexes"), on top of `fc733ac` (the commit Codex reviewed). Not merged;
+  no PR opened. The branch is the handoff artifact — review it there.
+- **What changed and why:**
+  1. Every public query path now passes the freshness gate
+     (`entities()`, `summary()`, CLI `handles` previously exposed facts
+     unchecked). `U8` pins the public accessor surface reflectively;
+     `R9` proves the CLI `handles` refusal end-to-end on the real binary.
+  2. Indexes whose facts the disk cannot validate (built from an
+     unsaved/dirty OCS document, or with `source_sha256=null`) now fail
+     closed: they require the matching live session + document + revision
+     for every query, with session identity verified on all live checks
+     (document ids and revision counters are per-session). New exception
+     `IndexUnverifiableError` (subclass of `IndexStaleError`; CLI prints
+     `UNVERIFIABLE INDEX`, exit 3). Unit: `U9`/`U10`; real binary:
+     `R10`/`R11`; session identity for clean indexes: `U11`.
+  Full rationale and evidence: `tools/ocs/results/2026-11-17_drawing_index_v2026.46.md`
+  ("Review round 2" section).
+- **Exact test commands, results, skips (this branch, after the fix):**
+
+```
+$ python3 tools/ocs/test_drawing_index.py   → 22/22 checks PASS (unit 11/11, real binary 11/11), exit 0, 2 consecutive runs
+$ python3 tools/ocs/ocs_smoke_test.py       → 15/15 steps PASS, exit 0 (milestone-1 regression)
+$ python3 tools/ocs/test_safe_workdir.py    → 6/6 checks passed, exit 0
+$ python3 tools/ocs/test_stale_revision.py  → 4/4 checks passed, exit 0
+```
+
+  Skips: **none** — the pinned binary was present for every real check.
+  (If the binary is missing on another machine, the real checks report
+  SKIP and the verdict explicitly says integration was NOT verified.)
+- **Known limitations / blockers:** none blocking review. Unverified
+  areas are listed below ("Known limits and unverified areas") and at the
+  end of the results file: pagination offset path, entity-type coverage
+  beyond Line/Circle/Text, DWG/blocks/XREFs/layouts, GUI channels,
+  field-level provenance via the verbatim `raw` payload.
+- **What Codex should review next:** the fix commit `3afb678` —
+  specifically (a) the fail-closed semantics in `DrawingIndex.check_fresh`
+  and `_live_required_reason` (`tools/ocs/drawing_index.py`): whether
+  dirty/no-hash indexes requiring the *same session* is the right trust
+  boundary and whether any public accessor can still bypass the gate
+  (`U8`'s exempt list: persistence helpers + raw `data` container);
+  (b) whether `IndexUnverifiableError` as a subclass of
+  `IndexStaleError` (same CLI exit 3) is the right refusal taxonomy;
+  (c) the new tests U8–U11/R9–R11 for correctness of what they claim to
+  prove. If accepted, the branch can be merged to `main` (PR #2).
 - The GitHub repository is public (`https://github.com/yusef47/vibe-engineer`).
   Access works through the repository-scoped SSH deploy key
   (`~/.ssh/vibe_engineer_deploy`, never committed) via the `github-vibe` SSH
