@@ -25,3 +25,6 @@ node_modules/
 target/
 dist/
 build/
+
+# Open CAD Studio smoke-test outputs (requests.jsonl, reports, fixtures)
+tools/ocs/out/
