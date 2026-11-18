@@ -16,6 +16,8 @@ recorded text) by sending a SMALL relevant index excerpt — never the whole
 drawing — to a configurable OpenRouter model, then validating the model's
 answer and citations locally before displaying anything. There is exactly
 ONE model call per question: no tool loops, no model loops, no retries.
+The DISPLAYED answer is composed locally from the cited index values; the
+model's free wording is never displayed (see the trust contract).
 
 ### Trust contract (what the tests prove)
 
@@ -34,6 +36,12 @@ ONE model call per question: no tool loops, no model loops, no retries.
   the excerpt, and every number stated must exist in the excerpt facts
   (Arabic-Indic digits are normalized). Invalid citations or invented
   numbers → the answer is DISCARDED (exit 5), never displayed.
+- **Displayed claims are bound to cited values.** What the user finally sees
+  is composed LOCALLY from the validated cited index values (counts/layers/
+  handle/text intents render deterministically from their facts; summary and
+  unmapped intents render exactly the cited fields). The model's own wording
+  is never shown, so unsupported prose — e.g. "safe reinforced columns" —
+  cannot reach the display at all (U27/U28 pin the PR #4 review repros).
 - **Honest "cannot answer".** Structural-safety questions and edit requests
   are refused deterministically WITHOUT any model call (the index holds no
   confirmed structural data; this slice is read-only). Questions the facts
@@ -47,13 +55,19 @@ ONE model call per question: no tool loops, no model loops, no retries.
   One request per question; `--max-tokens` (default 500) and a hard prompt
   size cap bound each call; a tracked-spend cap (default $5.00 = PLAN.md's
   initial evaluation budget; `--spend-cap-usd` / `$OPENROUTER_SPEND_CAP_USD`)
-  refuses further calls once the spend OpenRouter itself reports
-  (`usage: {"include": true}`) reaches it. Usage logging (stdout line +
-  optional `--usage-log` JSONL) records tokens, cost, latency, and the
-  question's hash — never the key and never prompt content. NOTE: the cap
-  can only count costs the provider reports; costless-looking calls are
-  logged with `cost_usd: null` for reconciliation against the OpenRouter
-  dashboard.
+  refuses any call once the CUMULATIVE spend reaches it — cumulative across
+  every run sharing the usage log (default
+  `tools/ocs/out/openrouter_usage.jsonl`; archive/rotate the file to reset
+  the counter deliberately). Usage logging (stdout line + the `--usage-log`
+  JSONL) records tokens, cost, latency, and the question's hash — never the
+  key and never prompt content. HONEST LIMITS: the cap counts only costs the
+  provider reports (`usage: {"include": true}`); calls that report no cost
+  count as zero-cost and are FLAGGED in the output (`cost_usd: null` in the
+  log) for reconciliation against the OpenRouter dashboard. The cap is a
+  POST-call cumulative stop, NOT a pre-call guarantee: a single call can
+  exceed the remaining cap because the cost is only known after the call —
+  bound per-call size with `--max-tokens` and set a hard spend limit in the
+  OpenRouter dashboard when a hard guarantee is required.
 - **Read-only.** The layer contains no CAD mutation path at all; it never
   starts OCS, never opens a document, never edits anything.
 
@@ -81,7 +95,7 @@ python tools\ocs\drawing_qa.py ask --index idx.json --usage-log usage.jsonl --sh
 # 4. Inspect what WOULD be sent to the model (no network, no key, no cost)
 python tools\ocs\drawing_qa.py excerpt --index idx.json --question "How many circles?"
 
-# 5. Test suite: 26 unit + 4 real-binary checks; M1 (one REAL model call)
+# 5. Test suite: 31 unit + 4 real-binary checks; M1 (one REAL model call)
 #    runs ONLY with --real-openrouter AND the key set (SKIP otherwise)
 python tools\ocs\test_drawing_qa.py
 python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25
@@ -93,7 +107,7 @@ unverifiable index refusal; 4 cannot answer from the available drawing facts
 (missing key, HTTP error, timeout, unparseable output, invalid citations,
 spend cap reached); 1 unexpected; 130 interrupted.
 
-Test tiers — do not confuse them: U1–U26 are MOCKED model calls (a fake
+Test tiers — do not confuse them: U1–U31 are MOCKED model calls (a fake
 client with canned JSON; no network, no key, no cost). R1–R4 run the real
 pinned OCS binary but still a fake model. Only M1 is a REAL OpenRouter call
 (one Arabic question, `max_tokens=300`, inside the spend cap); when it is
@@ -107,7 +121,10 @@ skipped, the verdict explicitly says real-model integration was NOT verified.
   `layers.<name>` fallback handles the common case only).
 - `idx.entities()` deep-copies all records before slicing (fine at fixture
   scale; large drawings need a lazy slice).
-- The spending cap counts only provider-reported costs (see above).
+- The spending cap counts only provider-reported costs and is a post-call
+  cumulative stop, not a pre-call guarantee (see budget safety above); one
+  call can exceed the remaining cap — a hard guarantee needs a dashboard
+  spend limit.
 - The excerpt cap (default 20 records) bounds what is sent; a question
   needing an entity beyond the cap gets an honest truncated excerpt.
 

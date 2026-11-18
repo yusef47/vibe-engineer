@@ -33,15 +33,23 @@ no model loops of any kind — unbounded repair loops are deliberately absent):
      answer is discarded and refused (exit 3);
   6. citation validation against the retrieved excerpt: every cited handle
      must be present among the returned records, every fact path must
-     resolve inside the excerpt, and every number stated in the answer must
-     exist in the excerpt facts (Arabic-Indic digits are normalized).
-     Invalid citations or unsupported numbers -> the answer is discarded
-     (exit 5), never displayed;
-  7. a factual answer is displayed only with its evidence block: source
-     path, source SHA-256, document revision, indexed-at timestamp, and the
-     cited handles. "Cannot answer" is stated clearly (exit 4) when the
-     facts do not support the question — nothing structural, no loads, no
-     units, nothing not in the index is ever inferred.
+     resolve inside the excerpt, and every number stated in the model's
+     own text must exist in the excerpt facts (Arabic-Indic digits are
+     normalized). Invalid citations or unsupported numbers -> the answer
+     is discarded (exit 5), never displayed;
+  7. the DISPLAYED answer is composed locally, in the question's language,
+     from the validated cited index values ONLY (count/layer/handle/text
+     intents are rendered deterministically from their facts; summary and
+     unmapped intents from exactly the cited fields). The model's free
+     wording is NEVER displayed, so claims the index does not support —
+     for example structural prose such as "safe reinforced columns" —
+     cannot reach the user at all;
+  8. a factual answer is displayed only with its evidence block: source
+     path, source SHA-256, document revision, indexed-at timestamp, the
+     cited handles and fact paths. "Cannot answer" is stated clearly
+     (exit 4) when the facts do not support the question — nothing
+     structural, no loads, no units, nothing not in the index is ever
+     inferred.
 
 Trust contract carried over from milestone 2 (`drawing_index.py`):
 
@@ -64,15 +72,21 @@ OpenRouter usage rules (budget safety):
 - one request per question; `max_tokens` bounds each reply; the excerpt
   bounds the prompt;
 - a spending cap (default $5.00 = PLAN.md's initial evaluation budget;
-  `--spend-cap-usd` / `$OPENROUTER_SPEND_CAP_USD`) refuses any further call
-  once tracked spend reaches it. Tracked spend comes from the `usage.cost`
-  OpenRouter itself reports (requested via `usage: {"include": true}`);
-  when a call reports no cost, the call is logged with `cost_usd: null` so
-  the operator can reconcile against the OpenRouter dashboard — the cap can
-  only count reported costs, which is documented as a limitation;
+  `--spend-cap-usd` / `$OPENROUTER_SPEND_CAP_USD`) refuses any call once the
+  CUMULATIVE tracked spend reaches it — cumulative across every run that
+  shares the usage log (default `tools/ocs/out/openrouter_usage.jsonl`;
+  archive/rotate that file to reset the counter deliberately). Tracked spend
+  comes ONLY from the `usage.cost` OpenRouter itself reports (requested via
+  `usage: {"include": true}`); calls that report no cost count as zero-cost
+  and are FLAGGED in the output for reconciliation against the OpenRouter
+  dashboard. HONEST LIMITS: the cap is a post-call cumulative stop, NOT a
+  pre-call guarantee — a single call can exceed the remaining cap because
+  the cost is only known after the call. Bound per-call size with
+  `max_tokens`; when a hard guarantee is required, set a spend limit in the
+  OpenRouter dashboard (external control);
 - usage logging prints token counts, cost, and latency per call (stdout,
-  plus optional `--usage-log` JSONL). Logs contain NO prompt content and NO
-  key material.
+  plus the `--usage-log` JSONL, on by default at the path above). Logs
+  contain NO prompt content and NO key material.
 
 CLI (see tools/ocs/README.md):
 
@@ -118,6 +132,11 @@ MAX_PROMPT_CHARS = 200_000             # hard cap on the serialized prompt
 ENV_KEY = "OPENROUTER_API_KEY"
 ENV_MODEL = "OPENROUTER_MODEL"
 ENV_SPEND_CAP = "OPENROUTER_SPEND_CAP_USD"
+
+# Default usage log: the spending cap is CUMULATIVE across every run that
+# shares this file (post-call stop; see the module docstring). Pass
+# `--usage-log ""` to disable logging (the cap is then per-run only).
+DEFAULT_USAGE_LOG_PATH = os.path.join(HERE, "out", "openrouter_usage.jsonl")
 
 EXIT_OK = 0
 EXIT_OTHER = 1
@@ -384,6 +403,9 @@ CAVEATS = [
     "is needed, set answerable=false and say briefly what is missing",
     "every number you state must come from these facts; cite the entity "
     "handles and/or fact paths you actually used",
+    "the final displayed answer is composed locally from the values of the "
+    "facts you cite (your wording is not shown); cite exactly the facts "
+    "that answer the question",
 ]
 
 SYSTEM_PROMPT = """You answer questions about ONE CAD drawing strictly from an excerpt of its local index (JSON).
@@ -578,6 +600,223 @@ def _validate_numbers_general(answer: str, facts: dict,
     return errors
 
 
+# ---- displayed-answer composition (from cited index values only) -------------
+# The model's free wording is NEVER displayed. Every displayed claim is a
+# value read back from the validated cited fields of the excerpt, so claims
+# the index does not support (e.g. structural prose) cannot reach the user.
+
+_TYPE_GLOSS_AR = {"Line": "خطوط", "Circle": "دوائر", "Text": "نصوص",
+                  "Arc": "أقواس", "Polyline": "خطوط متعددة",
+                  "Insert": "كتل", "MText": "نصوص متعددة"}
+
+
+def _fmt_value(value) -> str:
+    """Exact, compact rendering of an excerpt value (no rounding, no
+    interpretation): strings verbatim, numbers via str, containers as
+    compact JSON."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return json.dumps(value)
+    if isinstance(value, (int, float)):
+        return str(value)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _fmt_geometry(geometry) -> str | None:
+    if not isinstance(geometry, dict) or not geometry:
+        return None
+    parts = []
+    for key, value in geometry.items():
+        if isinstance(value, dict):
+            inner = ", ".join(_fmt_value(v) for v in value.values())
+            parts.append(f"{key}=({inner})")
+        else:
+            parts.append(f"{key}={_fmt_value(value)}")
+    return ", ".join(parts)
+
+
+def _text_value_of(rec: dict) -> str | None:
+    text = rec.get("text")
+    if isinstance(text, dict):
+        value = text.get("value")
+        return value if isinstance(value, str) and value.strip() else None
+    return None
+
+
+def _compose_count(facts: dict, lang: str) -> str:
+    ec = facts.get("entity_counts") or {}
+    by_type = ec.get("by_type") or {}
+    by_layer = ec.get("by_layer") or {}
+    if lang == "ar":
+        parts = [f"الإجمالي {_fmt_value(ec.get('total'))}"]
+        for ctype, n in by_type.items():
+            gloss = _TYPE_GLOSS_AR.get(ctype)
+            label = f"{gloss} ({ctype})" if gloss else f'النوع "{ctype}"'
+            parts.append(f"{label} {_fmt_value(n)}")
+        text = "عدد العناصر (من الفهرس): " + "؛ ".join(parts) + "."
+        if by_layer:
+            layers = "، ".join(f"{name} {_fmt_value(n)}"
+                               for name, n in by_layer.items())
+            text += f" حسب الطبقة: {layers}."
+        return text
+    parts = [f"total {_fmt_value(ec.get('total'))}"]
+    parts += [f"{ctype} {_fmt_value(n)}" for ctype, n in by_type.items()]
+    text = "Entity counts (from the index): " + ", ".join(parts) + "."
+    if by_layer:
+        layers = ", ".join(f"{name} {_fmt_value(n)}"
+                           for name, n in by_layer.items())
+        text += f" By layer: {layers}."
+    return text
+
+
+def _compose_layers(facts: dict, lang: str) -> str:
+    layers = facts.get("layers") or {}
+    if lang == "ar":
+        body = "؛ ".join(f"{name} {_fmt_value(n)}"
+                         for name, n in layers.items())
+        return f"عدد العناصر حسب الطبقة (من الفهرس): {body}."
+    body = ", ".join(f"{name} {_fmt_value(n)}" for name, n in layers.items())
+    return f"Layer counts (from the index): {body}."
+
+
+def _compose_record(rec: dict, lang: str) -> str:
+    geometry = _fmt_geometry(rec.get("geometry"))
+    text_value = _text_value_of(rec)
+    color = rec.get("color")
+    if lang == "ar":
+        parts = [f"المعرف {rec.get('handle')}", f"النوع {rec.get('type')}",
+                 f"الطبقة {rec.get('layer')}"]
+        if geometry:
+            parts.append(f"الهندسة: {geometry}")
+        parts.append(f"النص: {text_value!r}" if text_value
+                     else "النص: (لا يوجد)")
+        if color is not None:
+            parts.append(f"اللون: {_fmt_value(color)}")
+        parts.append("التصنيف: null (لا يوجد تصنيف إنشائي مؤكد)")
+        return "؛ ".join(parts)
+    parts = [f"handle {rec.get('handle')}", f"type {rec.get('type')}",
+             f"layer {rec.get('layer')}"]
+    if geometry:
+        parts.append(f"geometry {geometry}")
+    parts.append(f"text {text_value!r}" if text_value else "text (none)")
+    if color is not None:
+        parts.append(f"color {_fmt_value(color)}")
+    parts.append("classification null")
+    return ", ".join(parts)
+
+
+def _compose_record_short(rec: dict, lang: str) -> str:
+    text_value = _text_value_of(rec)
+    if lang == "ar":
+        body = f"المعرف {rec.get('handle')}: النوع {rec.get('type')}" \
+               f"، الطبقة {rec.get('layer')}"
+        return body + (f"، النص {text_value!r}" if text_value else "")
+    body = (f"handle {rec.get('handle')}: type {rec.get('type')}"
+            f", layer {rec.get('layer')}")
+    return body + (f", text {text_value!r}" if text_value else "")
+
+
+def _compose_text(facts: dict, records: list[dict], lang: str) -> str:
+    if "match_count" in facts:
+        needle = facts.get("query")
+        count = facts.get("match_count")
+        truncated = facts.get("truncated")
+        if lang == "ar":
+            head = (f'بحث النص "{needle}": عدد المطابقات {_fmt_value(count)}'
+                    f'{" (مقاطع إضافية موجودة)" if truncated else ""}.')
+            body = "؛ ".join(_compose_record_short(rec, "ar")
+                             for rec in records)
+        else:
+            head = (f'Text search "{needle}": {_fmt_value(count)} match(es)'
+                    f'{" (more matches exist)" if truncated else ""}.')
+            body = "; ".join(_compose_record_short(rec, "en")
+                             for rec in records)
+        if body:
+            return f"{head} {body}."
+        return head
+    values = facts.get("all_recorded_text_values") or []
+    if lang == "ar":
+        if not values:
+            return "لا توجد قيم نصية مسجلة في الفهرس."
+        return ("القيم النصية المسجلة (من الفهرس): "
+                + "؛ ".join(f'"{v}"' for v in values) + ".")
+    if not values:
+        return "No text values are recorded in the index."
+    return ("Recorded text values (from the index): "
+            + "; ".join(f'"{v}"' for v in values) + ".")
+
+
+def _compose_from_citations(facts: dict, lang: str, cited_handles: list[str],
+                            fact_paths: list[str],
+                            records_by_handle_ci: dict) -> str:
+    parts = []
+    for path in fact_paths:
+        found, value = _resolve_fact_path(facts, path)
+        if found:
+            parts.append(f"{path} = {_fmt_value(value)}")
+    for handle in cited_handles:
+        rec = records_by_handle_ci.get(handle.lower())
+        if rec is not None:
+            parts.append(_compose_record_short(rec, lang))
+    if lang == "ar":
+        return ("من الفهرس (قيم الحقول المُستشهد بها فقط): "
+                + "؛ ".join(parts) + ".") if parts else ""
+    return ("From the index (only the cited values): "
+            + "; ".join(parts) + ".") if parts else ""
+
+
+def _compose_answer(intent: str, lang: str, facts: dict,
+                    records: list[dict], cited_handles: list[str],
+                    fact_paths: list[str],
+                    records_by_handle_ci: dict,
+                    requested_handle: str | None) -> str:
+    if intent == INTENT_COUNT:
+        return _compose_count(facts, lang)
+    if intent == INTENT_LAYERS:
+        return _compose_layers(facts, lang)
+    if intent == INTENT_TEXT:
+        return _compose_text(facts, records, lang)
+    if intent == INTENT_HANDLE and records:
+        rec = records_by_handle_ci.get((requested_handle or "").lower())
+        return _compose_record(rec or records[0], lang)
+    return _compose_from_citations(facts, lang, cited_handles, fact_paths,
+                                   records_by_handle_ci)
+
+
+def _read_usage_log_stats(path: str) -> tuple[float, int, int]:
+    """(prior_reported_spend_usd, reported_calls, unreported_calls) from an
+    existing usage JSONL, so the spending cap is CUMULATIVE across every run
+    that shares the log. Only records with status 200 count as calls; only
+    provider-reported numeric costs are summed; records with `cost_usd: null`
+    are counted as calls whose cost the cap cannot see; malformed lines are
+    skipped (never fatal, never restored/rewritten)."""
+    total = 0.0
+    reported = 0
+    unreported = 0
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(rec, dict) or rec.get("status") != 200:
+                    continue
+                cost = rec.get("cost_usd")
+                if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+                    total += float(cost)
+                    reported += 1
+                elif cost is None:
+                    unreported += 1
+    except OSError:
+        pass  # no log yet is the normal first-run case
+    return total, reported, unreported
+
+
 # ---- OpenRouter client -------------------------------------------------------
 class OpenRouterClient:
     """One-question-one-call OpenRouter client (stdlib urllib only).
@@ -598,8 +837,16 @@ class OpenRouterClient:
         self.max_tokens = int(max_tokens)
         self.spend_cap_usd = float(spend_cap_usd)
         self.usage_log_path = usage_log_path
+        # cumulative tracking: prior calls from the shared usage log count
+        # toward the cap, so a fresh CLI invocation does not reset it
+        (self.prior_spend_usd, self.prior_reported_calls,
+         self.prior_unreported_calls) = (
+            _read_usage_log_stats(usage_log_path)
+            if usage_log_path else (0.0, 0, 0))
         self._transport = transport or self._http_transport
-        self.tracked_spend_usd = 0.0
+        self.tracked_spend_usd = self.prior_spend_usd
+        self.reported_cost_calls = self.prior_reported_calls
+        self.unreported_cost_calls = self.prior_unreported_calls
         self.records: list[dict] = []
 
     def _http_transport(self, url, body, headers, timeout):
@@ -616,6 +863,9 @@ class OpenRouterClient:
         if not self.usage_log_path:
             return
         try:
+            parent = os.path.dirname(self.usage_log_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             with open(self.usage_log_path, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False,
                                     sort_keys=True) + "\n")
@@ -636,11 +886,25 @@ class OpenRouterClient:
                 f"(limit {MAX_PROMPT_CHARS}); refusing to send — reduce the "
                 "excerpt (lower --excerpt-max-records)")
         if self.tracked_spend_usd >= self.spend_cap_usd - 1e-9:
+            unreported = ""
+            if self.unreported_cost_calls:
+                unreported = (f", plus {self.unreported_cost_calls} call(s) "
+                              "that reported no cost (the cap can only count "
+                              "reported costs — reconcile on the OpenRouter "
+                              "dashboard)")
             raise ModelFailure(
-                f"SPEND CAP REACHED — tracked spend ${self.tracked_spend_usd:.6f} "
-                f">= cap ${self.spend_cap_usd:.2f}; no request sent. Raise the "
-                "cap consciously (--spend-cap-usd / $OPENROUTER_SPEND_CAP_USD) "
-                "or stop")
+                "SPEND CAP REACHED — cumulative tracked spend "
+                f"${self.tracked_spend_usd:.6f} >= cap "
+                f"${self.spend_cap_usd:.2f} (from "
+                f"{self.reported_cost_calls} call(s) with provider-reported "
+                f"cost across this usage log{unreported}). This is a "
+                "post-call cumulative stop, NOT a pre-call guarantee: one "
+                "call can exceed the remaining cap because the cost is only "
+                "known after the call — bound per-call size with max_tokens "
+                "and set a hard spend limit in the OpenRouter dashboard. "
+                "No request was sent. Raise the cap consciously "
+                "(--spend-cap-usd / $OPENROUTER_SPEND_CAP_USD), or "
+                "archive/rotate the usage log to reset the counter")
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system},
@@ -685,6 +949,9 @@ class OpenRouterClient:
         cost = usage.get("cost")
         if isinstance(cost, (int, float)) and not isinstance(cost, bool):
             self.tracked_spend_usd += float(cost)
+            self.reported_cost_calls += 1
+        else:
+            self.unreported_cost_calls += 1
         record.update({
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
@@ -846,11 +1113,25 @@ def answer_question(idx: "di.DrawingIndex", question: str, client,
                       model_called=True)
 
     evidence = dict(evidence_base)
+    # the DISPLAYED answer is composed locally from the validated cited
+    # index values; the model's own wording is never shown (see module
+    # docstring step 7)
+    try:
+        composed = _compose_answer(intent, lang, facts, records,
+                                   cited_handles, fact_paths,
+                                   records_by_handle_ci, requested)
+    except Exception as exc:  # noqa: BLE001 - composition is local and safe
+        return Answer("model_failure", intent=intent, question_lang=lang,
+                      detail=f"could not compose the displayed answer from "
+                             f"the cited index values: {exc}",
+                      model_called=True)
     evidence.update({
         "cited_handles": cited_handles,
+        "cited_fact_paths": fact_paths,
+        "answer_source": "composed_from_cited_index_values",
         "citations_validated": True,
     })
-    return Answer("answered", answer_text=answer_text.strip(),
+    return Answer("answered", answer_text=composed,
                   cited_handles=cited_handles, evidence=evidence,
                   intent=intent, question_lang=lang, model_called=True,
                   requested_handle=requested,
@@ -878,15 +1159,25 @@ def _usage_line(client: "OpenRouterClient") -> str | None:
         return (f"usage: call FAILED (status={record.get('status')!r}, "
                 f"latency_ms={record.get('latency_ms')}); no tokens/cost "
                 "reported by the provider for a failed call")
-    cost = ("not reported by provider (cap counts reported costs only)"
+    cost = ("NOT reported by provider — the cap cannot count it; reconcile "
+            "on the OpenRouter dashboard"
             if record.get("cost_usd") is None
             else f"${record['cost_usd']:.6f}")
-    return (f"usage: model={record['model']} "
+    line = (f"usage: model={record['model']} "
             f"prompt_tokens={record.get('prompt_tokens')} "
             f"completion_tokens={record.get('completion_tokens')} "
-            f"total_tokens={record.get('total_tokens')} cost={cost} "
-            f"tracked_spend=${client.tracked_spend_usd:.6f} "
-            f"(cap ${client.spend_cap_usd:.2f})")
+            f"total_tokens={record.get('total_tokens')} cost={cost}\n"
+            f"  tracked_spend (cumulative over this usage log)= "
+            f"${client.tracked_spend_usd:.6f} of cap "
+            f"${client.spend_cap_usd:.2f} — the cap is a post-call "
+            "cumulative stop, not a pre-call guarantee: a single call can "
+            "exceed the remaining cap; bound per-call size with "
+            "--max-tokens and set a hard limit in the OpenRouter dashboard")
+    if client.unreported_cost_calls:
+        line += (f"\n  warning: {client.unreported_cost_calls} call(s) "
+                 "reported NO cost — the cap cannot count them; reconcile "
+                 "on the OpenRouter dashboard")
+    return line
 
 
 def _print_evidence(answer: Answer) -> None:
@@ -902,6 +1193,10 @@ def _print_evidence(answer: Answer) -> None:
           f"before display ({len(ev['freshness_checks_before_display'])} checks)")
     print(f"  cited handles:     {_fmt_handles(ev['cited_handles'])} "
           "(validated against the retrieved excerpt)")
+    fact_paths = ev.get("cited_fact_paths") or []
+    print(f"  cited fact paths:  {', '.join(fact_paths) if fact_paths else '(none)'}")
+    print("  answer source:     composed locally from the cited index values; "
+          "the model's own wording is never displayed")
 
 
 def _index_consulted_line(answer: Answer) -> None:
@@ -929,10 +1224,15 @@ def cmd_ask(args, parser) -> int:
         idx = di.DrawingIndex.from_json(args.index)
     except (OSError, json.JSONDecodeError) as e:
         parser.error(f"cannot load index {args.index!r}: {e}")
+    # default: log ON at the shared path so the spend cap is cumulative
+    # across CLI runs; an explicit empty string disables the log (and the
+    # cumulative gate — then clearly labeled per-run only)
+    usage_log = (DEFAULT_USAGE_LOG_PATH if args.usage_log is None
+                 else (args.usage_log or None))
     client = OpenRouterClient(
         model=model, api_key=os.environ.get(ENV_KEY),
         timeout_s=args.timeout_s, max_tokens=args.max_tokens,
-        spend_cap_usd=cap, usage_log_path=args.usage_log)
+        spend_cap_usd=cap, usage_log_path=usage_log)
     answer = answer_question(idx, args.question, client,
                              excerpt_max_records=args.excerpt_max_records,
                              keep_excerpt=args.show_excerpt)
@@ -1034,15 +1334,27 @@ def main(argv=None) -> int:
     p_ask.add_argument("--timeout-s", type=float, default=DEFAULT_TIMEOUT_S,
                        help=f"per-request timeout in seconds (default {DEFAULT_TIMEOUT_S:g})")
     p_ask.add_argument("--spend-cap-usd", type=float, default=None,
-                       help=f"tracked-spend cap in USD (default: ${ENV_SPEND_CAP}, "
-                            f"then {DEFAULT_SPEND_CAP_USD:.2f})")
+                       help=f"cumulative tracked-spend stop in USD (default: "
+                            f"${ENV_SPEND_CAP}, then "
+                            f"{DEFAULT_SPEND_CAP_USD:.2f}). Counts only "
+                            "provider-reported costs, accumulated across "
+                            "every run sharing the usage log; a POST-call "
+                            "stop, not a pre-call guarantee — one call can "
+                            "exceed the remaining cap, so also bound "
+                            "--max-tokens and set a hard limit in the "
+                            "OpenRouter dashboard when required")
     p_ask.add_argument("--excerpt-max-records", type=int,
                        default=DEFAULT_EXCERPT_MAX_RECORDS,
                        help="max entity records included in the excerpt "
                             f"(default {DEFAULT_EXCERPT_MAX_RECORDS})")
     p_ask.add_argument("--usage-log", default=None,
                        help="append per-call usage records (JSONL, no key, "
-                            "no prompt content) to this file")
+                            "no prompt content) to this file; default: "
+                            "tools/ocs/out/openrouter_usage.jsonl — the "
+                            "spend cap accumulates over every run sharing "
+                            "this file; archive/rotate it to reset the "
+                            "counter; pass an empty string to disable "
+                            "logging (cap is then per-run only)")
     p_ask.add_argument("--show-excerpt", action="store_true",
                        help="also print the exact excerpt sent to the model")
     p_ask.set_defaults(fn=cmd_ask)

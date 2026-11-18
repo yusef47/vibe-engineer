@@ -3,12 +3,15 @@
 
 Checks the `drawing_qa` module in three tiers:
 
-- UNIT (U1–U26): no OCS process, no network, no API key. The index is built
+- UNIT (U1–U31): no OCS process, no network, no API key. The index is built
   from canned `--serve` replies (the canned entities mirror the milestone-1
   synthetic fixture: 4 lines on TEST-BOUNDARY, a circle r=5.0 on
   TEST-SYMBOLS, one text — handles 86–8B) and the model is a fake client
   with a canned JSON reply. These checks are MOCKED model calls by
-  definition; they prove the pipeline, not the provider.
+  definition; they prove the pipeline, not the provider. U27/U28 pin the
+  Codex PR #4 review repros (display composed from cited index values,
+  structural prose never displayed); U29–U31 pin the cumulative spend-cap
+  semantics.
 - REAL BINARY (R1–R4): the pinned OpenCADStudio build, headless. The
   fixture is produced by the milestone-1 tooling, indexed through the real
   `--serve` channel, and the QA flow runs against the REAL index with a
@@ -193,9 +196,13 @@ def u1_english_count_answered() -> str:
         ans = qa.answer_question(idx, EN_COUNT_Q, client)
         assert ans.status == "answered", (ans.status, ans.detail)
         assert "6" in ans.answer_text
+        assert "Circle 1" in ans.answer_text, ans.answer_text  # composed from facts
         assert len(client.calls) == 1, "exactly one model call is allowed"
         assert ans.evidence["citations_validated"] is True
         assert ans.evidence["cited_handles"] == []  # count facts, no handles
+        assert ans.evidence["cited_fact_paths"] == \
+            ["entity_counts.total", "entity_counts.by_type.Line"]
+        assert ans.evidence["answer_source"] == "composed_from_cited_index_values"
         ev = ans.evidence
         assert ev["source_path"].endswith("fake_drawing.dxf")
         assert len(ev["source_sha256"]) == 64
@@ -262,6 +269,9 @@ def u4_handle_lookup() -> str:
         # customer identity stays local even for record-bearing intents
         assert idx.data["source"]["sha256"] not in client.calls[0]["user"]
         assert "fake_drawing.dxf" not in client.calls[0]["user"]
+        # displayed answer composed from the record's own values
+        assert "8A" in ans.answer_text and "Circle" in ans.answer_text
+        assert "5.0" in ans.answer_text, ans.answer_text
         return "handle 8A excerpt: one slim record (radius 5.0, no raw, no path/sha)"
 
 
@@ -279,6 +289,8 @@ def u5_text_search() -> str:
         assert payload["facts"]["match_count"] == 1
         assert payload["facts"]["entity_records"][0]["handle"] == "8B"
         assert ans.evidence["cited_handles"] == ["8B"]
+        assert "8B" in ans.answer_text \
+            and "SMOKE-TEST SYNTHETIC FIXTURE" in ans.answer_text, ans.answer_text
         return "text search: 1 match, cited handle validated"
 
 
@@ -297,6 +309,9 @@ def u6_summary_excerpt_is_capped() -> str:
         assert len(payload["facts"]["entity_records"]) == 2
         assert payload["facts"]["truncated"] is True
         assert payload["facts"]["entity_counts"]["total"] == 6
+        # summary display = exactly the cited values, never model prose
+        assert "entity_counts.total = 6" in ans.answer_text, ans.answer_text
+        assert "86" in ans.answer_text
         return "summary excerpt capped at 2 of 6 records; truncated=true"
 
 
@@ -637,6 +652,154 @@ def u26_cli_stale_exit3() -> str:
         return "CLI on a stale index: exit 3 + rebuild hint, before any model call"
 
 
+def u27_count_prose_mismatch_repro() -> str:
+    """Codex PR #4 review repro 1: a VALID citation (entity_counts.by_type.
+    Circle = 1) beside WRONG prose ("There are 4 circles." — 4 is the Line
+    count). The displayed answer must come from the cited index values, not
+    from the model's wording."""
+    with tempfile.TemporaryDirectory() as tmp:
+        idx, _src = build_test_index(tmp)
+        client = FakeClient(reply={
+            "answerable": True,
+            "answer": "There are 4 circles.",
+            "citations": [{"fact": "entity_counts.by_type.Circle"}]})
+        ans = qa.answer_question(idx, "How many circles are in this drawing?",
+                                 client)
+        assert ans.status == "answered", (ans.status, ans.detail)
+        assert ans.evidence["citations_validated"] is True
+        text = ans.answer_text
+        assert "Circle 1" in text, text          # the true cited value
+        assert "4 circles" not in text, text     # the model's wrong prose
+        assert "There are" not in text, text     # no model wording displayed
+        return ("repro 1: valid citation + wrong prose -> display composed "
+                "from cited values (Circle 1)")
+
+
+def u28_structural_prose_never_displayed() -> str:
+    """Codex PR #4 review repro 2: a summary answer claiming structural
+    meaning ("safe reinforced columns") that the index does not contain
+    (classification is null everywhere). The displayed answer must contain
+    only cited index values."""
+    with tempfile.TemporaryDirectory() as tmp:
+        idx, _src = build_test_index(tmp)
+        client = FakeClient(reply={
+            "answerable": True,
+            "answer": "The drawing contains safe reinforced columns.",
+            "citations": [{"fact": "entity_counts.total"}]})
+        ans = qa.answer_question(idx, "Summarize this drawing.", client)
+        assert ans.status == "answered", (ans.status, ans.detail)
+        lowered = ans.answer_text.lower()
+        for word in ("safe", "reinforced", "column", "structural", "beam"):
+            assert word not in lowered, (word, ans.answer_text)
+        assert "entity_counts.total = 6" in ans.answer_text, ans.answer_text
+        assert ans.evidence["answer_source"] == \
+            "composed_from_cited_index_values"
+        return "repro 2: structural prose never displayed; only cited values"
+
+
+def u29_cumulative_spend_cap_across_invocations() -> str:
+    """Codex PR #4 review point 2: the cap must NOT reset per CLI run. Three
+    invocations share one usage log; the third must be refused BEFORE any
+    request is sent."""
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = os.path.join(tmp, "usage.jsonl")
+        calls = []
+
+        def transport(url, body, headers, timeout):
+            calls.append(1)
+            return 200, json.dumps({
+                "choices": [{"message": {"content": "{}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1,
+                          "total_tokens": 2, "cost": 0.5}}).encode()
+
+        key = "sk-or-v1-TESTKEY"
+        c1 = qa.OpenRouterClient(model="m", api_key=key, spend_cap_usd=1.0,
+                                 usage_log_path=log_path, transport=transport)
+        c1.complete("s", "u")
+        assert abs(c1.tracked_spend_usd - 0.5) < 1e-9
+        c2 = qa.OpenRouterClient(model="m", api_key=key, spend_cap_usd=1.0,
+                                 usage_log_path=log_path, transport=transport)
+        assert abs(c2.tracked_spend_usd - 0.5) < 1e-9, \
+            "a new invocation must seed its tracked spend from the shared log"
+        c2.complete("s", "u")
+        assert abs(c2.tracked_spend_usd - 1.0) < 1e-9
+        c3 = qa.OpenRouterClient(model="m", api_key=key, spend_cap_usd=1.0,
+                                 usage_log_path=log_path, transport=transport)
+        assert abs(c3.tracked_spend_usd - 1.0) < 1e-9
+        try:
+            c3.complete("s", "u")
+        except qa.ModelFailure as e:
+            msg = str(e)
+            for needle in ("SPEND CAP REACHED", "cumulative", "post-call",
+                           "OpenRouter dashboard"):
+                assert needle in msg, (needle, msg)
+        else:
+            raise AssertionError(
+                "cumulative cap did not stop the third invocation")
+        assert len(calls) == 2, "the capped invocation must never send a request"
+        return ("cap is cumulative across invocations sharing the usage "
+                "log; 3rd invocation refused before any request")
+
+
+def u30_unreported_cost_flagged_and_malformed_log_tolerated() -> str:
+    """Honest accounting: calls whose cost the provider does not report count
+    as zero toward the cap but are FLAGGED; malformed log lines are skipped
+    without crashing; a $0.00 cap refuses before any request."""
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = os.path.join(tmp, "usage.jsonl")
+        with open(log_path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ts_utc": "t", "model": "m", "status": 200,
+                                 "cost_usd": None}) + "\n")
+            fh.write("not json at all\n")  # malformed line must be skipped
+
+        calls = []
+
+        def transport(url, body, headers, timeout):
+            calls.append(1)
+            return 200, json.dumps({
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1,
+                          "total_tokens": 2}}).encode()  # no cost reported
+
+        key = "sk-or-v1-TESTKEY"
+        c = qa.OpenRouterClient(model="m", api_key=key, spend_cap_usd=10.0,
+                                usage_log_path=log_path, transport=transport)
+        assert c.unreported_cost_calls == 1, c.unreported_cost_calls
+        assert abs(c.tracked_spend_usd) < 1e-12
+        c.complete("s", "u")
+        assert c.unreported_cost_calls == 2
+        assert len(calls) == 1
+        capped = qa.OpenRouterClient(model="m", api_key=key, spend_cap_usd=0.0,
+                                     usage_log_path=log_path,
+                                     transport=transport)
+        try:
+            capped.complete("s", "u")
+        except qa.ModelFailure as e:
+            assert "SPEND CAP REACHED" in str(e), e
+            assert "reported no cost" in str(e), e
+        else:
+            raise AssertionError("a $0.00 cap did not stop the call")
+        assert len(calls) == 1, "the capped call must never be sent"
+        return ("unreported-cost calls flagged; malformed log lines skipped; "
+                "$0 cap refuses before any request")
+
+
+def u31_cli_help_labels_cap_honestly() -> str:
+    """The CLI must not promise a hard per-call guarantee (Codex point 2):
+    the help text states the cap is a cumulative post-call stop and names
+    the external hard limit."""
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "drawing_qa.py"), "ask", "--help"],
+        capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, (proc.returncode, proc.stderr)
+    text = proc.stdout.lower()  # case-insensitive: wrapping/italics may vary
+    for needle in ("cumulative", "post-call", "dashboard", "max-tokens",
+                   "guarantee"):
+        assert needle in text, (needle, proc.stdout)
+    return ("CLI help states the cap is a cumulative post-call stop and "
+            "names the dashboard as the hard limit")
+
+
 # ---- real-binary tier (SKIP when the pinned OCS binary is missing) -----------
 EXE = ocs.resolve_exe()
 REAL_OK = os.path.isfile(EXE)
@@ -738,7 +901,9 @@ def real_model_qa(base: str, fixture: str, args) -> str:
     model = args.model or os.environ.get(qa.ENV_MODEL) or qa.DEFAULT_MODEL
     client = qa.OpenRouterClient(
         model=model, api_key=key, max_tokens=300,
-        spend_cap_usd=args.spend_cap_usd, usage_log_path=log_path)
+        spend_cap_usd=(args.spend_cap_usd if args.spend_cap_usd is not None
+                       else qa.DEFAULT_SPEND_CAP_USD),
+        usage_log_path=log_path)
     question = "كم عدد العناصر في هذا الرسم؟"
     ans = qa.answer_question(idx, question, client)
     if ans.status != "answered":
@@ -824,6 +989,17 @@ def main() -> int:
           u25_cli_no_key_exit5)
     check("U26 cli: stale index -> exit 3 + rebuild hint before any model "
           "call", u26_cli_stale_exit3)
+    check("U27 unit: Codex repro 1 — valid citation + wrong prose; display "
+          "composed from cited values", u27_count_prose_mismatch_repro)
+    check("U28 unit: Codex repro 2 — structural prose never displayed; only "
+          "cited index values", u28_structural_prose_never_displayed)
+    check("U29 unit: spend cap is CUMULATIVE across invocations sharing the "
+          "usage log", u29_cumulative_spend_cap_across_invocations)
+    check("U30 unit: unreported-cost calls flagged; malformed log lines "
+          "skipped; $0 cap refuses pre-send",
+          u30_unreported_cost_flagged_and_malformed_log_tolerated)
+    check("U31 cli: --help labels the cap honestly (cumulative post-call "
+          "stop, dashboard hard limit)", u31_cli_help_labels_cap_honestly)
 
     ctx: dict = {}
 

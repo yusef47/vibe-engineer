@@ -46,16 +46,21 @@ Updated: 2026-11-18 (Africa/Cairo)
   drawing changed is discarded), citations validated against the retrieved
   excerpt before display (handles must exist among the returned records,
   fact paths must resolve, stated numbers must exist in the facts —
-  Arabic-Indic digits normalized), honest "cannot answer" (structural-safety
+  Arabic-Indic digits normalized), and the DISPLAYED answer is composed
+  locally from the cited index values (the model's free wording is never
+  shown, so unsupported structural prose cannot reach the user — the PR #4
+  review-round-1 fixes below). Honest "cannot answer" (structural-safety
   questions and edit requests are refused deterministically with ZERO model
   calls), one request per question (no loops of any kind), key from
   `$OPENROUTER_API_KEY` (or an ignored repo-root `.env` seeding it; redacted
-  from all errors), spending cap default $5.00, usage logging without key or
-  prompt content. Verified: 31/31 checks (26 unit + 4 real-binary; the one
-  real-model check honestly SKIPs without a key — see the PR #4 review
-  section below). All four OCS regression suites re-ran green on the same
-  day (one documented `os error 1175` save flake per environment note;
-  re-run remedy).
+  from all errors), spending cap default $5.00 — CUMULATIVE across every run
+  sharing the default usage log, a post-call stop honestly labeled (not a
+  pre-call guarantee; a hard guarantee needs an OpenRouter dashboard limit),
+  usage logging without key or prompt content. Verified: 36/36 checks
+  (31 unit + 4 real-binary; the one real-model check honestly SKIPs without
+  a key — see the PR #4 review section below). All four OCS regression
+  suites re-ran green on the same day (one documented `os error 1175` save
+  flake per environment note; re-run remedy).
 
 ## Review handoff for Codex (GitHub is the handoff channel)
 
@@ -82,14 +87,16 @@ Updated: 2026-11-18 (Africa/Cairo)
      key in every error path, usage records with tokens/cost/latency and a
      question HASH (never the key, never prompt content). Excerpts never
      contain the source path or file hash.
-  2. `tools/ocs/test_drawing_qa.py` (new): 26 unit checks (U1–U26, fake
+  2. `tools/ocs/test_drawing_qa.py` (new): 31 unit checks (U1–U31, fake
      model, no network/no key), 4 real-binary checks (R1–R4, real pinned
      OCS + fake model), 1 real-model check (M1) that runs ONLY with
      `--real-openrouter` AND the key set, else SKIP (never proof). R3
      reuses the fixture R2 produced — one smoke-subprocess run per suite
      invocation instead of two, which halves exposure to the documented
      `os error 1175` save flake and matches the declared R3-on-R2
-     dependency (no behavioral safety rule touched).
+     dependency (no behavioral safety rule touched). U27/U28 pin the
+     Codex PR #4 review repros and U29–U31 pin the cumulative spend-cap
+     semantics (see the review-round-1 section below).
   3. `tools/ocs/.env.example` (new): documents `OPENROUTER_API_KEY` /
      `OPENROUTER_MODEL` / `OPENROUTER_SPEND_CAP_USD`; copy to repo-root
      `.env` (gitignored). `drawing_qa.py` seeds only `OPENROUTER_*` keys
@@ -114,14 +121,14 @@ python tools\ocs\drawing_qa.py excerpt --index idx.json --question "..."   # wha
 - **Exact test commands and results (this session, 2026-11-18):**
 
 ```
-$ python tools\ocs\test_drawing_qa.py       → PASS, 31/31 checks (unit 26/26, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 (the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts today; the final green run needed one re-run)
+$ python tools\ocs\test_drawing_qa.py       → PASS, 36/36 checks (unit 31/31, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 — the post-review-round-1 run (display composition + cumulative cap); the pre-fix suite was 31/31, and the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts that day (re-run remedy, no auto-retry by design)
 $ python tools\ocs\ocs_smoke_test.py        → 15/15 steps PASS, exit 0 (one earlier run hit the documented os error 1175 save flake; passed on re-run, no retry added by design)
 $ python tools\ocs\test_drawing_index.py    → 23/23 checks PASS (unit 12/12, real 11/11, 0 skips), exit 0 (same flake hit R5/R9 on two earlier attempts, a different save each time; passed on re-run)
 $ python tools\ocs\test_safe_workdir.py     → 6/6 checks passed, exit 0
 $ python tools\ocs\test_stale_revision.py   → 4/4 checks passed, exit 0
 ```
 
-- **Mocked vs real — read this before trusting "tests pass":** U1–U26 are
+- **Mocked vs real — read this before trusting "tests pass":** U1–U31 are
   MOCKED model calls (`FakeClient` with canned JSON; prove the pipeline).
   R1–R4 use the REAL pinned OCS binary for index building/staleness but a
   FAKE model. **M1 is the only REAL OpenRouter call and it did NOT run in
@@ -170,13 +177,68 @@ python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25
   and one paid call); layer names containing dots defeat dotted fact-path
   citations (the `layers.<name>` fallback covers the common case);
   `idx.entities()` deep-copies all records before slicing (fixture scale
-  only); the cap counts only reported costs; M1 (real model) unverified in
+  only); the cap counts only reported costs and is a post-call cumulative
+  stop — one call can exceed the remaining cap, a hard guarantee needs an
+  OpenRouter dashboard limit; M1 (real model) unverified in
   this session; the Windows `os error 1175` save flake appeared ~once per
   suite run today (documented environment issue, pre-existing, unrelated to
   this code — it hits OCS's own save in milestone-1 tooling).
 - The GitHub repository is `https://github.com/yusef47/vibe-engineer`.
   Pushes happen from the Windows laptop with the founder's own GitHub
   authentication.
+
+## PR #4 review round 1 (Codex) — fixes on `feat/drawing-qa`
+
+Two review points, both fixed on the same branch with new regression tests
+(suite now 36/36: 31 unit + 4 real-binary + M1 SKIP-honest; the
+drawing-index regression suite is still 23/23):
+
+1. **Displayed claims are now bound to exact cited fields/values** (was:
+   citation-exists + number-exists-somewhere, which let a wrong sentence
+   through). Codex reproduced two failures on the six-entity fixture:
+   - "How many circles?" → model prose "There are 4 circles." citing
+     `entity_counts.by_type.Circle` (true value 1).
+   - "Summarize this drawing." → model prose "The drawing contains safe
+     reinforced columns." citing `entity_counts.total`.
+   Fix: the model's free wording is NEVER displayed. The displayed answer
+   is composed locally, in the question's language, from the validated
+   cited index values only — count/layer/handle/text intents render
+   deterministically from their facts; summary/unmapped intents render
+   exactly the cited fields (`entity_counts.total = 6`). The JSON contract
+   still requires `answerable`/`answer`/`citations` (the model's `answer`
+   is still produced and still number-validated, but it is not the
+   displayed text), and the evidence block now lists the cited fact paths
+   plus `answer_source: composed_from_cited_index_values`. Tests: U27
+   (repro 1: "Circle 1" displayed; "4 circles" and the model's wording
+   absent), U28 (repro 2: no safe/reinforced/column/structural/beam word
+   in the displayed text), plus tightened U1/U4/U5/U6 display assertions.
+2. **The spend cap is now CUMULATIVE and honestly labeled** (was: a fresh
+   CLI invocation reset tracked spend to $0 because each `ask` builds a
+   new client). Fix: the client seeds its tracked spend from the shared
+   usage log (the `--usage-log` default is now
+   `tools/ocs/out/openrouter_usage.jsonl`, so the gate spans CLI runs;
+   `--usage-log ""` disables logging and the cross-run gate, clearly
+   labeled per-run only). The cap stays a POST-call stop — a single call
+   can exceed the remaining cap because the cost is only known after the
+   call; the refusal message, the CLI `--help`, and the usage line all
+   state this and name the OpenRouter dashboard as the external hard
+   limit. Calls whose cost the provider does not report count as
+   zero-cost and are FLAGGED in the output; malformed usage-log lines are
+   skipped. Tests: U29 (three invocations share one log; the third is
+   refused before any request), U30 (unreported-cost flagging + malformed
+   lines skipped + a $0.00 cap refuses before sending), U31 (CLI help
+   honesty).
+
+- Adjacent one-line fix found while working in the same path: M1 crashed
+  with `float(None)` when run without `--spend-cap-usd` (the argparse
+  None was passed straight into the client); it now falls back to the
+  default cap.
+- Exact results this round: `python tools\ocs\test_drawing_qa.py` → PASS
+  36/36 (unit 31/31, real binary 4/4, M1 SKIP-honest), exit 0;
+  `python tools\ocs\test_drawing_index.py` → 23/23 PASS, exit 0. No real
+  model calls were made this round either (no key on this machine; costs
+  observed: none). With the cumulative cap, repeated real-model runs
+  accumulate in the default usage log; archive/rotate the file to reset.
 
 ## PR #3 record (merged as `5d895d2` — history)
 
