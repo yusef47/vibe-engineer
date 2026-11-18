@@ -59,8 +59,8 @@ Updated: 2026-11-18 (Africa/Cairo)
   from all errors), spending cap default $5.00 — CUMULATIVE across every run
   sharing the default usage log, a post-call stop honestly labeled (not a
   pre-call guarantee; a hard guarantee needs an OpenRouter dashboard limit),
-  usage logging without key or prompt content. Verified: 38/38 checks
-  (33 unit + 4 real-binary; the one real-model check honestly SKIPs without
+  usage logging without key or prompt content. Verified: 40/40 checks
+  (35 unit + 4 real-binary; the one real-model check honestly SKIPs without
   a key — see the PR #4 review section below). All four OCS regression
   suites re-ran green on the same day (one documented `os error 1175` save
   flake per environment note; re-run remedy).
@@ -90,7 +90,7 @@ Updated: 2026-11-18 (Africa/Cairo)
      key in every error path, usage records with tokens/cost/latency and a
      question HASH (never the key, never prompt content). Excerpts never
      contain the source path or file hash.
-  2. `tools/ocs/test_drawing_qa.py` (new): 33 unit checks (U1–U33, fake
+  2. `tools/ocs/test_drawing_qa.py` (new): 35 unit checks (U1–U35, fake
      model, no network/no key), 4 real-binary checks (R1–R4, real pinned
      OCS + fake model), 1 real-model check (M1) that runs ONLY with
      `--real-openrouter` AND the key set, else SKIP (never proof). R3
@@ -99,8 +99,8 @@ Updated: 2026-11-18 (Africa/Cairo)
      `os error 1175` save flake and matches the declared R3-on-R2
      dependency (no behavioral safety rule touched). U27/U28 pin the
      Codex PR #4 review round-1 repros, U29–U31 pin the cumulative
-     spend-cap semantics, and U32/U33 pin the round-2 repros (see the
-     review sections below).
+     spend-cap semantics, U32/U33 pin the round-2 repros, and U34/U35
+     pin the round-3 repros (see the review sections below).
   3. `tools/ocs/.env.example` (new): documents `OPENROUTER_API_KEY` /
      `OPENROUTER_MODEL` / `OPENROUTER_SPEND_CAP_USD`; copy to repo-root
      `.env` (gitignored). `drawing_qa.py` seeds only `OPENROUTER_*` keys
@@ -125,14 +125,14 @@ python tools\ocs\drawing_qa.py excerpt --index idx.json --question "..."   # wha
 - **Exact test commands and results (this session, 2026-11-18):**
 
 ```
-$ python tools\ocs\test_drawing_qa.py       → PASS, 38/38 checks (unit 33/33, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 — the post-review-round-2 run (displayed-fields reporting + local neutral refusal messages); the post-round-1 suite was 36/36 (the pre-fix suite 31/31), and the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts that day (re-run remedy, no auto-retry by design)
+$ python tools\ocs\test_drawing_qa.py       → PASS, 40/40 checks (unit 35/35, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 — the post-review-round-3 run (neutral parse failure without echoing response content + dotted-layer path resolution); the post-round-2 suite was 38/38, post-round-1 36/36 (the pre-fix suite 31/31), and the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts that day (re-run remedy, no auto-retry by design)
 $ python tools\ocs\ocs_smoke_test.py        → 15/15 steps PASS, exit 0 (one earlier run hit the documented os error 1175 save flake; passed on re-run, no retry added by design)
 $ python tools\ocs\test_drawing_index.py    → 23/23 checks PASS (unit 12/12, real 11/11, 0 skips), exit 0 (same flake hit R5/R9 on two earlier attempts, a different save each time; passed on re-run)
 $ python tools\ocs\test_safe_workdir.py     → 6/6 checks passed, exit 0
 $ python tools\ocs\test_stale_revision.py   → 4/4 checks passed, exit 0
 ```
 
-- **Mocked vs real — read this before trusting "tests pass":** U1–U33 are
+- **Mocked vs real — read this before trusting "tests pass":** U1–U35 are
   MOCKED model calls (`FakeClient` with canned JSON; prove the pipeline).
   R1–R4 use the REAL pinned OCS binary for index building/staleness but a
   FAKE model. **M1 is the only REAL OpenRouter call and it did NOT run in
@@ -288,6 +288,48 @@ drawing-index regression suite is still 23/23):
   the local refusal messages, and the cumulative POST-call cap semantics
   (no "bounds a run below the cap" claim; the dashboard stays the hard
   limit).
+
+## PR #4 review round 3 (Codex) — fixes on `feat/drawing-qa`
+
+- Codex re-reviewed `4dc48c0` (round-2 fixes and the updated description
+  confirmed; 38/38 independently rerun) and reported two remaining edge
+  cases; both are fixed with regression tests U34/U35, keeping the PR open
+  for re-review (merge stays gated).
+- **Case 1 — malformed model output echoed the model's free wording through
+  the error path.** Repro: `FakeClient(raw="This structure is unsafe and
+  requires reinforcement.")` for a summary question returned
+  `model_failure` whose detail carried that whole sentence (and `cmd_ask`
+  prints the detail). Fix: `_parse_model_json` now raises a NEUTRAL
+  parse-failure message with NO response content ("the model response did
+  not contain a JSON object; the answer is discarded (response content is
+  not displayed)"). The malformed-JSON-with-braces branch keeps only the
+  `JSONDecodeError` position (its string never contains response content).
+  U34 pins the repro: no model word and no "output began" echo in the
+  displayed detail.
+- **Case 2 — dotted layer names broke displayed-path resolution.** Repro:
+  `_compose_count` emits `entity_counts.by_layer.A.B` for layer `A.B`, but
+  `_resolve_fact_path` returned `(False, None)`, so the U32 "every displayed
+  path resolves" check could not hold for such layers. Fix (the extend-
+  resolution option, mirroring the existing `layers.<rest>` fallback):
+  a failing dotted walk into `entity_counts.by_layer.<rest>` is retried
+  with the remainder as one literal key. `by_layer` values are counts,
+  never dicts, so the retry is unambiguous even when layers `A` and `A.B`
+  both exist. The SYSTEM_PROMPT now says a layer name containing dots is
+  cited as written, so the real model can produce resolvable citations.
+  U35 pins the exact repro snippet, the A/A.B unambiguity, the fail-closed
+  absent layer, the `layers.A.B` fallback, and an end-to-end count answer
+  over a dotted-layer fixture (cited `entity_counts.by_layer.A.B`, every
+  displayed path resolves).
+- Doc updates: `tools/ocs/README.md` (trust bullet gains the neutral parse
+  failure; the dotted-layer known-limit bullet now describes the retry
+  rule; counts 35 unit / U1–U35) and HANDOFF counts + this section.
+- Exact results this round: `python tools\ocs\test_drawing_qa.py` → PASS
+  40/40 (unit 35/35, real binary 4/4, M1 SKIP-honest), exit 0;
+  `python tools\ocs\test_drawing_index.py` → 23/23 PASS, exit 0. No real
+  model calls (no key on this machine; costs observed: none). Per the
+  review: the remaining separate gate after merge approval is a REAL
+  OpenRouter M1 run with a locally supplied key and actual cost evidence —
+  no key is ever shared in chat or committed.
 
 ## PR #3 record (merged as `5d895d2` — history)
 

@@ -3,7 +3,7 @@
 
 Checks the `drawing_qa` module in three tiers:
 
-- UNIT (U1–U33): no OCS process, no network, no API key. The index is built
+- UNIT (U1–U35): no OCS process, no network, no API key. The index is built
   from canned `--serve` replies (the canned entities mirror the milestone-1
   synthetic fixture: 4 lines on TEST-BOUNDARY, a circle r=5.0 on
   TEST-SYMBOLS, one text — handles 86–8B) and the model is a fake client
@@ -12,7 +12,9 @@ Checks the `drawing_qa` module in three tiers:
   Codex PR #4 review round-1 repros (deterministic display from index
   values, structural prose never displayed); U29–U31 pin the cumulative
   spend-cap semantics; U32/U33 pin the round-2 repros (displayed-fields
-  reporting and refusal prose replaced by a local neutral message).
+  reporting and refusal prose replaced by a local neutral message); U34/U35
+  pin the round-3 repros (neutral parse failure without echoing response
+  content; dotted layer names resolve in cited AND displayed paths).
 - REAL BINARY (R1–R4): the pinned OpenCADStudio build, headless. The
   fixture is produced by the milestone-1 tooling, indexed through the real
   `--serve` channel, and the QA flow runs against the REAL index with a
@@ -899,6 +901,98 @@ def u33_refusal_prose_never_displayed() -> str:
                 "neutral message by reason_code")
 
 
+def u34_parse_failure_neutral_no_echo() -> str:
+    """Codex PR #4 review round 3, repro 1: malformed model output (plain
+    prose, no JSON) must produce a NEUTRAL model_failure detail — the
+    response content is never echoed, so the model's free wording cannot
+    reach the display through the error path either."""
+    with tempfile.TemporaryDirectory() as tmp:
+        idx, _src = build_test_index(tmp)
+        client = FakeClient(
+            raw="This structure is unsafe and requires reinforcement.")
+        ans = qa.answer_question(idx, "Summarize this drawing.", client)
+        assert ans.status == "model_failure", (ans.status, ans.detail)
+        lowered = ans.detail.lower()
+        for word in ("unsafe", "reinforced", "structure", "safety"):
+            assert word not in lowered, (word, ans.detail)
+        # the old echo marker is gone and no response content is quoted
+        assert "output began" not in lowered, ans.detail
+        assert "the model response did not contain a json object" in lowered, \
+            ans.detail
+        assert ans.answer_text is None
+        assert len(client.calls) == 1  # exactly one bounded call, no retry
+        # malformed JSON WITH braces is still a neutral failure too (the
+        # JSONDecodeError message reports a position, never content)
+        client2 = FakeClient(raw='{"answerable": true, "answer": "oops",}')
+        ans2 = qa.answer_question(idx, "Summarize this drawing.", client2)
+        assert ans2.status == "model_failure", (ans2.status, ans2.detail)
+        assert "malformed json" in ans2.detail.lower(), ans2.detail
+        assert "oops" not in ans2.detail, ans2.detail
+        return ("repro: malformed model output -> NEUTRAL model_failure, "
+                "response content never echoed")
+
+
+def build_dotted_layer_index(tmpdir):
+    """Fixture with a layer name containing a dot: 4 lines on TEST-BOUNDARY
+    plus one circle on layer 'A.B' (offline, canned --serve replies)."""
+    src = make_tmp_drawing(tmpdir)
+    circle = dict(RAW_CIRCLE, layer="A.B")
+    circle["properties"] = {"common": {"color": "ByLayer", "layer": "A.B"}}
+    canned = RAW_LINES + [circle]
+    srv = FakeServe(fake_state(src), {"ok": True, "count": 5,
+                                      "entities": canned,
+                                      "next_offset": None})
+    idx = di.build_index(srv, src)
+    return idx, src
+
+
+def u35_dotted_layer_paths_resolve() -> str:
+    """Codex PR #4 review round 3, repro 2: layer names containing a dot.
+    entity_counts.by_layer.<name> display paths (and model citations) must
+    resolve like layers.<name> does, and the U32-style correspondence check
+    must hold for a dotted layer name end to end."""
+    # 1. the exact repro: a by_layer path with a dotted name now resolves
+    facts = {"entity_counts": {"by_layer": {"A.B": 2}}}
+    assert qa._resolve_fact_path(facts, "entity_counts.by_layer.A.B") == \
+        (True, 2)
+    # 2. unambiguity: 'A' and 'A.B' both present -> each path picks its own
+    facts2 = {"entity_counts": {"by_layer": {"A": 3, "A.B": 1}}}
+    assert qa._resolve_fact_path(facts2, "entity_counts.by_layer.A") == \
+        (True, 3)
+    assert qa._resolve_fact_path(facts2, "entity_counts.by_layer.A.B") == \
+        (True, 1)
+    # 3. absent layer still fails closed
+    assert qa._resolve_fact_path(facts2, "entity_counts.by_layer.B.C") == \
+        (False, None)
+    # 4. the layers.<name> fallback keeps working for dotted names
+    assert qa._resolve_fact_path({"layers": {"A.B": 1}}, "layers.A.B") == \
+        (True, 1)
+    # 5. end to end: count question, model cites the DOTTED layer path,
+    #    every displayed path (including the dotted one) resolves
+    with tempfile.TemporaryDirectory() as tmp:
+        idx, _src = build_dotted_layer_index(tmp)
+        client = FakeClient(reply={
+            "answerable": True,
+            "answer": "The drawing contains 5 entities.",
+            "citations": [{"fact": "entity_counts.by_layer.A.B"}]})
+        ans = qa.answer_question(idx, EN_COUNT_Q, client)
+        assert ans.status == "answered", (ans.status, ans.detail)
+        ev = ans.evidence
+        assert ev["cited_fact_paths"] == ["entity_counts.by_layer.A.B"], \
+            ev["cited_fact_paths"]
+        displayed = ev["displayed_fact_paths"]
+        assert "entity_counts.by_layer.A.B" in displayed, displayed
+        # the count answer shows the dotted layer's own value
+        assert "A.B 1" in ans.answer_text, ans.answer_text
+        # U32-style correspondence, now with a dotted name in the mix
+        payload = user_payload(client)
+        for path in displayed:
+            found, _value = qa._resolve_fact_path(payload["facts"], path)
+            assert found, (path, displayed)
+        return ("repro: dotted layer name end to end — cited/displayed "
+                "path resolves, count shown")
+
+
 # ---- real-binary tier (SKIP when the pinned OCS binary is missing) -----------
 EXE = ocs.resolve_exe()
 REAL_OK = os.path.isfile(EXE)
@@ -1105,6 +1199,12 @@ def main() -> int:
     check("U33 unit: Codex round-2 repro 2 — refusal prose never displayed; "
           "local neutral message by reason_code",
           u33_refusal_prose_never_displayed)
+    check("U34 unit: Codex round-3 repro 1 — malformed model output -> "
+          "NEUTRAL parse failure, response content never echoed",
+          u34_parse_failure_neutral_no_echo)
+    check("U35 unit: Codex round-3 repro 2 — dotted layer name: "
+          "by_layer paths resolve, correspondence holds end to end",
+          u35_dotted_layer_paths_resolve)
 
     ctx: dict = {}
 

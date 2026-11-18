@@ -422,7 +422,7 @@ Rules:
 - If the excerpt does not contain the answer, set "answerable" to false and "reason_code" to exactly one of: "missing_facts" (the facts needed are not in the excerpt) or "question_unsupported" (the question cannot be answered from CAD index facts). Also write a brief "reason" in the question's language — it is kept for debugging but is NOT shown to the user.
 - If it does, set "answerable" to true, write a concise answer in the SAME language as the question (an Arabic question gets an Arabic answer; an English question gets an English answer), and list "citations": the entity handles and/or fact paths you used.
 - Use Western digits (0-9) for all numbers in the answer.
-- "fact" citations are dotted paths into the excerpt, e.g. "entity_counts.by_type.Circle" or "layers.TEST-SYMBOLS".
+- "fact" citations are dotted paths into the excerpt, e.g. "entity_counts.by_type.Circle" or "layers.TEST-SYMBOLS". A layer name containing dots is cited as written, e.g. "entity_counts.by_layer.A.B" or "layers.A.B".
 - Output EXACTLY ONE JSON object and nothing else:
   {"answerable": true, "answer": "...", "citations": [{"handle": "8A"}, {"fact": "entity_counts.total"}]}
   or
@@ -451,12 +451,16 @@ def _parse_model_json(text: str) -> dict:
     except json.JSONDecodeError:
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if not m:
+            # neutral failure: NO response content is echoed — the displayed
+            # detail must never carry the model's free wording (PR #4 review
+            # round 3, repro 1)
             raise ModelFailure(
-                "the model did not return a JSON object; answer discarded "
-                f"(output began: {raw[:120]!r})")
+                "the model response did not contain a JSON object; the "
+                "answer is discarded (response content is not displayed)")
         try:
             reply = json.loads(m.group(0))
         except json.JSONDecodeError as e:
+            # str(JSONDecodeError) reports only the position, never content
             raise ModelFailure(
                 f"the model returned malformed JSON ({e}); answer discarded")
     if not isinstance(reply, dict):
@@ -468,7 +472,10 @@ def _parse_model_json(text: str) -> dict:
 def _resolve_fact_path(facts: dict, path: str):
     """Resolve a dotted path inside the excerpt facts. Returns (found, value).
     Layer names may themselves contain dots, so a failing 'layers.<rest>'
-    path is retried with the remainder as one literal key."""
+    path is retried with the remainder as one literal key; the same applies
+    to 'entity_counts.by_layer.<rest>' (by_layer values are counts, never
+    dicts, so the dotted walk always fails first for a dotted layer name —
+    PR #4 review round 3, repro 2)."""
     if not isinstance(path, str) or not path.strip():
         return False, None
     path = path.strip().lstrip("$.")
@@ -482,6 +489,12 @@ def _resolve_fact_path(facts: dict, path: str):
                 layers = facts.get("layers") or {}
                 if isinstance(layers, dict) and tail in layers:
                     return True, layers[tail]
+            if path.startswith("entity_counts.by_layer."):
+                tail = path[len("entity_counts.by_layer."):]
+                by_layer = ((facts.get("entity_counts") or {})
+                            .get("by_layer") or {})
+                if isinstance(by_layer, dict) and tail in by_layer:
+                    return True, by_layer[tail]
             return False, None
     return True, node
 

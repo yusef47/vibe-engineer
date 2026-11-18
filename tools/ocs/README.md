@@ -43,10 +43,12 @@ model's free wording is never displayed (see the trust contract).
   so the citation/display correspondence is checkable); summary and
   unmapped intents render exactly the cited fields. The model's own wording
   is never shown — neither answers nor refusal reasons (a cannot-answer
-  displays a local neutral message chosen by the validated `reason_code`) —
+  displays a local neutral message chosen by the validated `reason_code`,
+  and even a parse failure reports neutrally without echoing any response
+  content) —
   so unsupported prose such as "safe reinforced columns" or a structural
   refusal hallucination cannot reach the display at all (U27/U28/U32/U33
-  pin the PR #4 review repros).
+  and U34/U35 pin the PR #4 review repros).
 - **Honest "cannot answer".** Structural-safety questions and edit requests
   are refused deterministically WITHOUT any model call (the index holds no
   confirmed structural data; this slice is read-only). Questions the facts
@@ -100,7 +102,7 @@ python tools\ocs\drawing_qa.py ask --index idx.json --usage-log usage.jsonl --sh
 # 4. Inspect what WOULD be sent to the model (no network, no key, no cost)
 python tools\ocs\drawing_qa.py excerpt --index idx.json --question "How many circles?"
 
-# 5. Test suite: 33 unit + 4 real-binary checks; M1 (one REAL model call)
+# 5. Test suite: 35 unit + 4 real-binary checks; M1 (one REAL model call)
 #    runs ONLY with --real-openrouter AND the key set (SKIP otherwise)
 python tools\ocs\test_drawing_qa.py
 python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25
@@ -112,7 +114,7 @@ unverifiable index refusal; 4 cannot answer from the available drawing facts
 (missing key, HTTP error, timeout, unparseable output, invalid citations,
 spend cap reached); 1 unexpected; 130 interrupted.
 
-Test tiers — do not confuse them: U1–U33 are MOCKED model calls (a fake
+Test tiers — do not confuse them: U1–U35 are MOCKED model calls (a fake
 client with canned JSON; no network, no key, no cost). R1–R4 run the real
 pinned OCS binary but still a fake model. Only M1 is a REAL OpenRouter call
 (one Arabic question, `max_tokens=300`, inside the spend cap); when it is
@@ -122,8 +124,10 @@ skipped, the verdict explicitly says real-model integration was NOT verified.
 
 - The question classifier is a keyword map: unsupported phrasings fall back
   to a capped summary excerpt where the model decides answerable/unsupported.
-- Layer names containing dots can defeat dotted fact-path citations (the
-  `layers.<name>` fallback handles the common case only).
+- Layer names containing dots are cited as written: `layers.<name>` and
+  `entity_counts.by_layer.<name>` retry with the remainder as one literal
+  key when the dotted walk fails (U35 pins the dotted-layer case end to
+  end).
 - `idx.entities()` deep-copies all records before slicing (fine at fixture
   scale; large drawings need a lazy slice).
 - The spending cap counts only provider-reported costs and is a post-call
