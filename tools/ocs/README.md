@@ -3,9 +3,113 @@
 This directory holds the milestone-1 verification of the Open CAD Studio (OCS)
 integration: a headless, reproducible smoke test that proves the minimal
 read/edit/undo/save/reopen cycle against the real OCS binary. It also holds
-the milestone-2 read/index layer built on top of that proven connection.
-No AI model, no OpenRouter, no application framework — just the CAD
-integration evidence and a deterministic drawing index.
+the milestone-2 read/index layer built on top of that proven connection, and
+the milestone-3A read-only question-answering layer built on the index.
+No application framework — just the CAD integration evidence, a deterministic
+drawing index, and a strictly bounded model question-answering slice.
+
+## Milestone 3A — read-only QA over an index (`drawing_qa.py`)
+
+A stdlib-only, strictly READ-ONLY slice: answers simple Arabic or English
+questions about an ALREADY-INDEXED DXF (entity counts, layers, handles,
+recorded text) by sending a SMALL relevant index excerpt — never the whole
+drawing — to a configurable OpenRouter model, then validating the model's
+answer and citations locally before displaying anything. There is exactly
+ONE model call per question: no tool loops, no model loops, no retries.
+
+### Trust contract (what the tests prove)
+
+- **Two freshness gates.** `check_fresh()` runs before any fact is retrieved
+  and AGAIN before the answer is displayed. If the drawing changed while the
+  model was thinking, the answer is discarded (exit 3). Stale or unverifiable
+  indexes are refused before any fact leaves the index; recovery is ONLY an
+  explicit re-index (`drawing_index.py index`).
+- **Traceable evidence.** Every factual answer is printed with source path,
+  source SHA-256, document revision, indexed-at timestamp, and the cited
+  handles. The excerpt sent to the model NEVER contains the source path or
+  hash (customer identity stays local).
+- **Citation validation before display.** The model must answer with a JSON
+  object (`answerable` / `answer` / `citations`). Every cited handle must be
+  present among the returned records, every `fact` path must resolve inside
+  the excerpt, and every number stated must exist in the excerpt facts
+  (Arabic-Indic digits are normalized). Invalid citations or invented
+  numbers → the answer is DISCARDED (exit 5), never displayed.
+- **Honest "cannot answer".** Structural-safety questions and edit requests
+  are refused deterministically WITHOUT any model call (the index holds no
+  confirmed structural data; this slice is read-only). Questions the facts
+  cannot support are refused by the model via `answerable:false` (exit 4).
+  Nothing is inferred: no beams, columns, loads, safety, or units — the
+  excerpt caveats forbid it and `classification` is null everywhere.
+- **Budget safety.** Key from `$OPENROUTER_API_KEY` (or an ignored `.env` at
+  the repo root seeding it — see `tools/ocs/.env.example`); never printed,
+  logged, or committed, and redacted from all error messages. Model
+  configurable: `--model` > `$OPENROUTER_MODEL` > `z-ai/glm-5.3-flash`.
+  One request per question; `--max-tokens` (default 500) and a hard prompt
+  size cap bound each call; a tracked-spend cap (default $5.00 = PLAN.md's
+  initial evaluation budget; `--spend-cap-usd` / `$OPENROUTER_SPEND_CAP_USD`)
+  refuses further calls once the spend OpenRouter itself reports
+  (`usage: {"include": true}`) reaches it. Usage logging (stdout line +
+  optional `--usage-log` JSONL) records tokens, cost, latency, and the
+  question's hash — never the key and never prompt content. NOTE: the cap
+  can only count costs the provider reports; costless-looking calls are
+  logged with `cost_usd: null` for reconciliation against the OpenRouter
+  dashboard.
+- **Read-only.** The layer contains no CAD mutation path at all; it never
+  starts OCS, never opens a document, never edits anything.
+
+### Reproduce (Windows PowerShell; python3 on Linux)
+
+```powershell
+# 0. One-time: install the pinned OCS release (needed only to BUILD an index)
+powershell -ExecutionPolicy Bypass -File tools\ocs\setup.ps1
+
+# 1. Build an index for an existing drawing (explicit indexing operation)
+python tools\ocs\drawing_index.py index --file <drawing.dxf> --json idx.json
+
+# 2. Configure the key locally (never on the command line, never in git)
+#    copy tools\ocs\.env.example to .env at the repository root, fill it in,
+#    or:  $env:OPENROUTER_API_KEY = "<key>"
+
+# 3. Ask (Arabic or English)
+python tools\ocs\drawing_qa.py ask --index idx.json --question "How many circles?"
+python tools\ocs\drawing_qa.py ask --index idx.json --question "كم عدد العناصر في الرسم؟"
+python tools\ocs\drawing_qa.py ask --index idx.json --question "ما الطبقات الموجودة؟"
+python tools\ocs\drawing_qa.py ask --index idx.json --question "Show me the details of handle 8A"
+python tools\ocs\drawing_qa.py ask --index idx.json --question "find text SMOKE"
+python tools\ocs\drawing_qa.py ask --index idx.json --usage-log usage.jsonl --show-excerpt
+
+# 4. Inspect what WOULD be sent to the model (no network, no key, no cost)
+python tools\ocs\drawing_qa.py excerpt --index idx.json --question "How many circles?"
+
+# 5. Test suite: 26 unit + 4 real-binary checks; M1 (one REAL model call)
+#    runs ONLY with --real-openrouter AND the key set (SKIP otherwise)
+python tools\ocs\test_drawing_qa.py
+python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25
+```
+
+Exit codes (`ask`): 0 answered (with evidence); 2 usage; 3 stale or
+unverifiable index refusal; 4 cannot answer from the available drawing facts
+(deterministic guard or model-declared unsupported); 5 model/API failure
+(missing key, HTTP error, timeout, unparseable output, invalid citations,
+spend cap reached); 1 unexpected; 130 interrupted.
+
+Test tiers — do not confuse them: U1–U26 are MOCKED model calls (a fake
+client with canned JSON; no network, no key, no cost). R1–R4 run the real
+pinned OCS binary but still a fake model. Only M1 is a REAL OpenRouter call
+(one Arabic question, `max_tokens=300`, inside the spend cap); when it is
+skipped, the verdict explicitly says real-model integration was NOT verified.
+
+### Known limits of the 3A slice
+
+- The question classifier is a keyword map: unsupported phrasings fall back
+  to a capped summary excerpt where the model decides answerable/unsupported.
+- Layer names containing dots can defeat dotted fact-path citations (the
+  `layers.<name>` fallback handles the common case only).
+- `idx.entities()` deep-copies all records before slicing (fine at fixture
+  scale; large drawings need a lazy slice).
+- The spending cap counts only provider-reported costs (see above).
+- The excerpt cap (default 20 records) bounds what is sent; a question
+  needing an entity beyond the cap gets an honest truncated excerpt.
 
 ## Milestone 2 — drawing read/index layer (`drawing_index.py`)
 
@@ -138,6 +242,10 @@ listed at the end of that file.
 | Automation channel | `--serve` (one JSON request per line over stdin/stdout; no display needed on either platform) |
 | Executable override | `--exe PATH`, or `$OCS_EXE` (`$OCS_APPIMAGE` still honored for compatibility); binary digests are asserted per platform by `test_drawing_index.py` |
 | Interface docs | `docs/automation/README.md`, `docs/automation/API-SPEC.md`, `docs/automation/native.md` in the OpenCADStudio repo at tag `v2026.46` |
+| QA model endpoint | `https://openrouter.ai/api/v1/chat/completions` (stdlib `urllib`; `usage: {"include": true}` so the provider reports the actual cost) |
+| QA default model | `z-ai/glm-5.3-flash` — a model ID, never a price; configurable via `--model` / `$OPENROUTER_MODEL` |
+| QA spend cap | `$5.00` default (PLAN.md initial evaluation budget); `--spend-cap-usd` / `$OPENROUTER_SPEND_CAP_USD` |
+| QA key source | `$OPENROUTER_API_KEY`, or an ignored `.env` at the repo root seeding it (see `tools/ocs/.env.example`); never on the command line |
 
 ## Reproduce on the Windows dev laptop (primary environment)
 

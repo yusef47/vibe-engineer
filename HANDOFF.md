@@ -35,8 +35,150 @@ Updated: 2026-11-18 (Africa/Cairo)
   safe-workdir 6/6, stale-revision 4/4. Evidence:
   `tools/ocs/results/2026-11-18_v2026.46_windows_local.md`; reproduction
   (PowerShell): `tools/ocs/README.md`.
+- **Milestone 3A — read-only QA over the drawing index is open for review on
+  branch `feat/drawing-qa` (PR #4, stop before merge).** New stdlib-only
+  `tools/ocs/drawing_qa.py` (+ `test_drawing_qa.py`, `tools/ocs/.env.example`):
+  Arabic/English questions over an ALREADY-BUILT index are answered by a
+  configurable OpenRouter model from a SMALL relevant index excerpt (never
+  the whole drawing; count questions send ZERO entity records, handle
+  questions exactly one slim record). Two freshness gates (`check_fresh()`
+  before retrieval and again before display — an answer produced while the
+  drawing changed is discarded), citations validated against the retrieved
+  excerpt before display (handles must exist among the returned records,
+  fact paths must resolve, stated numbers must exist in the facts —
+  Arabic-Indic digits normalized), honest "cannot answer" (structural-safety
+  questions and edit requests are refused deterministically with ZERO model
+  calls), one request per question (no loops of any kind), key from
+  `$OPENROUTER_API_KEY` (or an ignored repo-root `.env` seeding it; redacted
+  from all errors), spending cap default $5.00, usage logging without key or
+  prompt content. Verified: 31/31 checks (26 unit + 4 real-binary; the one
+  real-model check honestly SKIPs without a key — see the PR #4 review
+  section below). All four OCS regression suites re-ran green on the same
+  day (one documented `os error 1175` save flake per environment note;
+  re-run remedy).
 
 ## Review handoff for Codex (GitHub is the handoff channel)
+
+- **Branch:** `feat/drawing-qa` — **PR #4: https://github.com/yusef47/vibe-engineer/pull/4**
+  (base `main` at merge commit `5d895d2`; stop before merging, per the
+  review gate).
+- **What this slice is:** milestone 3A — the first model-facing slice, and
+  deliberately READ-ONLY. The user can ask simple Arabic or English
+  questions about an ALREADY-INDEXED DXF (entity counts, layers, handles,
+  recorded text) and get an answer whose every factual claim is locally
+  validated against a small retrieved excerpt of the index before it is
+  displayed. No CAD mutation path exists in the new code; no edit proposals
+  either (that is a later milestone through `Serve.mutate()`'s rules).
+- **What changed (all new files except docs):**
+  1. `tools/ocs/drawing_qa.py` (new): the QA layer. Pipeline: local
+     bilingual classifier → freshness gate #1 (`check_fresh()`) → intent
+     excerpt (count: counts only; layers: layer counts; handle: one slim
+     record; text: matched records; unmapped: capped summary slice) → ONE
+     OpenRouter call (stdlib `urllib`, strict JSON contract) → freshness
+     gate #2 → citation/number validation → display with an evidence block.
+     Deterministic guards (structural-safety questions, edit requests)
+     refuse with ZERO model calls. Client: timeout, max_tokens, prompt-size
+     cap, spend cap from provider-reported `usage.cost`, redaction of the
+     key in every error path, usage records with tokens/cost/latency and a
+     question HASH (never the key, never prompt content). Excerpts never
+     contain the source path or file hash.
+  2. `tools/ocs/test_drawing_qa.py` (new): 26 unit checks (U1–U26, fake
+     model, no network/no key), 4 real-binary checks (R1–R4, real pinned
+     OCS + fake model), 1 real-model check (M1) that runs ONLY with
+     `--real-openrouter` AND the key set, else SKIP (never proof). R3
+     reuses the fixture R2 produced — one smoke-subprocess run per suite
+     invocation instead of two, which halves exposure to the documented
+     `os error 1175` save flake and matches the declared R3-on-R2
+     dependency (no behavioral safety rule touched).
+  3. `tools/ocs/.env.example` (new): documents `OPENROUTER_API_KEY` /
+     `OPENROUTER_MODEL` / `OPENROUTER_SPEND_CAP_USD`; copy to repo-root
+     `.env` (gitignored). `drawing_qa.py` seeds only `OPENROUTER_*` keys
+     from `.env`, existing env always wins, values never printed.
+  4. Docs: root `README.md` status, `tools/ocs/README.md` (milestone 3A
+     section + pinned-model rows).
+  - Deliberately NOT changed: `drawing_index.py`, `ocs_smoke_test.py`,
+    `setup.*`, the pinned version/digests, and every behavioral safety rule
+    (exactly-once mutations, no rmtree, staleness gates). The QA layer only
+    CALLS `DrawingIndex.check_fresh()` and the gated accessors.
+- **Setup actually used (Windows 11, Python 3.12.6, no new dependencies):**
+
+```powershell
+python tools\ocs\drawing_index.py index --file <drawing.dxf> --json idx.json
+# key (choose one; never the command line, never git):
+#   $env:OPENROUTER_API_KEY = "<key>"
+#   or copy tools\ocs\.env.example to .env at the repository root
+python tools\ocs\drawing_qa.py ask --index idx.json --question "How many circles?"
+python tools\ocs\drawing_qa.py excerpt --index idx.json --question "..."   # what WOULD be sent
+```
+
+- **Exact test commands and results (this session, 2026-11-18):**
+
+```
+$ python tools\ocs\test_drawing_qa.py       → PASS, 31/31 checks (unit 26/26, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 (the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts today; the final green run needed one re-run)
+$ python tools\ocs\ocs_smoke_test.py        → 15/15 steps PASS, exit 0 (one earlier run hit the documented os error 1175 save flake; passed on re-run, no retry added by design)
+$ python tools\ocs\test_drawing_index.py    → 23/23 checks PASS (unit 12/12, real 11/11, 0 skips), exit 0 (same flake hit R5/R9 on two earlier attempts, a different save each time; passed on re-run)
+$ python tools\ocs\test_safe_workdir.py     → 6/6 checks passed, exit 0
+$ python tools\ocs\test_stale_revision.py   → 4/4 checks passed, exit 0
+```
+
+- **Mocked vs real — read this before trusting "tests pass":** U1–U26 are
+  MOCKED model calls (`FakeClient` with canned JSON; prove the pipeline).
+  R1–R4 use the REAL pinned OCS binary for index building/staleness but a
+  FAKE model. **M1 is the only REAL OpenRouter call and it did NOT run in
+  this session: `OPENROUTER_API_KEY` was not set on this machine when the
+  branch was prepared.** The suite reported:
+  `REAL-MODEL INTEGRATION: NOT VERIFIED (SKIP)`. To produce real evidence
+  (costs observed, model behavior, Arabic reply quality):
+
+```powershell
+$env:OPENROUTER_API_KEY = "<key>"
+python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25
+# one Arabic question (كم عدد العناصر في هذا الرسم؟), max_tokens=300,
+# usage log at tools/ocs/out/openrouter_usage.jsonl
+```
+
+- **Costs actually observed so far: NONE.** No key was available in this
+  session, so zero paid calls were made preparing this branch. The default
+  cap is the PLAN.md initial $5.00 evaluation budget; the suite's M1 with
+  `--spend-cap-usd 0.25` bounds a single verification run to at most the
+  cost of one small call. Per-call cost is taken from OpenRouter's own
+  `usage.cost` (`usage: {"include": true}`); when a provider/model reports
+  no cost, the call is logged with `cost_usd: null` and the operator should
+  reconcile against the OpenRouter dashboard — the cap cannot count
+  unreported spend (documented limitation).
+- **What Codex should review (highest value first):**
+  1. `answer_question()` gate ordering and the refusal statuses (is the
+     two-gate contract airtight? is "refused_stale after the model call"
+     surfaced correctly?).
+  2. Citation validation strictness: `_validate_citations`,
+     `_validate_intent_binding`, `_validate_numbers_general` — can a wrong
+     answer still slip through (e.g., a count answer that is numerically
+     true but structurally misinterpreted; numbers-within-handles
+     leniency)?
+  3. The classifier keyword lists (`classify`) — both false positives
+     (honest refusal instead of an answer, the safe failure mode) and
+     false negatives (unmapped → summary excerpt → one paid call).
+  4. The spend-cap semantics: refuse when tracked spend >= cap, where
+     tracked spend comes only from provider-reported cost. Is the
+     documented reconciliation limitation acceptable for the first slice?
+  5. `OpenRouterClient` error paths: redaction coverage, HTTP non-200
+     handling, `transport` injection seam for tests.
+  6. Prompt/excerpt hygiene: caveats forbid structural claims and units;
+     `classification: null` is visible to the model; path/sha withheld.
+- **Known limits of the 3A slice (documented, not hidden):** keyword
+  classifier (unsupported phrasing falls back to a capped summary excerpt
+  and one paid call); layer names containing dots defeat dotted fact-path
+  citations (the `layers.<name>` fallback covers the common case);
+  `idx.entities()` deep-copies all records before slicing (fixture scale
+  only); the cap counts only reported costs; M1 (real model) unverified in
+  this session; the Windows `os error 1175` save flake appeared ~once per
+  suite run today (documented environment issue, pre-existing, unrelated to
+  this code — it hits OCS's own save in milestone-1 tooling).
+- The GitHub repository is `https://github.com/yusef47/vibe-engineer`.
+  Pushes happen from the Windows laptop with the founder's own GitHub
+  authentication.
+
+## PR #3 record (merged as `5d895d2` — history)
 
 - **Branch:** `feat/windows-local-ocs` — **PR #3: https://github.com/yusef47/vibe-engineer/pull/3** (tip: run `git rev-parse HEAD` on the branch — a commit cannot name itself; PR #3 opened with the full summary, exact results, provenance, limitations and review focus).
 - **What changed and why (all in `tools/ocs/` unless noted):**
@@ -110,8 +252,9 @@ $ python tools\ocs\test_stale_revision.py → 4/4 checks passed, exit 0
 - The GitHub repository is `https://github.com/yusef47/vibe-engineer`.
   Pushes now happen from the Windows laptop with the founder's own GitHub
   authentication; the Cloud Shell SSH deploy-key workflow is paused.
-- No AI model, OpenRouter key, or application framework has been added.
-  No structural classification is produced anywhere (every entity record
+- As of PR #3 (before milestone 3A): no AI model, OpenRouter key, or
+  application framework had been added. No structural classification is
+  produced anywhere (every entity record
   keeps `classification: null` until an engineer confirms labels).
 
 ## Milestone 2 — what works (verified against the real pinned binary)
@@ -326,13 +469,22 @@ locked/frozen layers not exercised; GUI (`--mcp`) still workstation-only.
 
 ## Next concrete task
 
-After Codex review/merge of `feat/windows-local-ocs`: milestone 3 — attach
-the conversation layer (OpenRouter model, per PLAN phase 3) to this index so
-answers cite index facts with their provenance (file, revision, handle), and
-the first bounded edit proposals flow through the existing `Serve.mutate()`
-rules (plan → review → one send → verify, stop on stale revision). Milestone
-3 is deliberately not started in this branch. Before that, optionally:
-extend the fixture set to more entity types (arc, polyline,
-insert-with-attributes — still synthetic) to widen index coverage, and
-engineer-confirmed classification as an explicit, separate data flow (never
-inferred from geometry/layer names).
+After Codex review of `feat/drawing-qa` (PR #4):
+
+1. **Real-model verification (founder, ~2 minutes, <$0.25):** set
+   `OPENROUTER_API_KEY`, run
+   `python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25`,
+   then a few `drawing_qa.py ask` questions (Arabic count/layers/handle,
+   English text search, one missing-fact question). Record the model's
+   actual answers, token counts, and the costs OpenRouter reports into this
+   HANDOFF — that is the "costs observed" evidence this branch intentionally
+   does not fabricate. Compare `z-ai/glm-5.3-flash` vs `qwen/qwen3.8-flash`
+   (PLAN candidates) with `--model` before settling on a default.
+2. **Milestone 3B — the first bounded edit proposals:** proposals flow
+   through the existing `Serve.mutate()` rules only (plan → review → one
+   send → verify, stop on stale revision). The QA layer stays read-only;
+   the edit layer is a separate, reviewed module.
+3. Optional index widening before real files: extend the synthetic fixture
+   set to more entity types (arc, polyline, insert-with-attributes) and the
+   engineer-confirmed classification flow (explicit, separate data flow,
+   never inferred from geometry/layer names).
