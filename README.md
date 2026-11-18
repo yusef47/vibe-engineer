@@ -6,6 +6,21 @@ The initial integration target is [Open CAD Studio](https://github.com/HakanSeve
 
 ## Current status
 
+The local Windows Vibe Engineer source fork now has a connected right-side
+Assistant panel and a read-only Python bridge to the live drawing through MCP.
+Without an OpenRouter key, `/summary`, `/entity HANDLE`, and `/help` work on
+the active drawing. Supported model questions will use the validated
+OpenRouter QA path after the founder adds a key locally. The model defaults
+to the existing QA candidate `z-ai/glm-5.3-flash` and can be overridden.
+CAD edits and structural assessment remain disabled; see
+[the assistant service guide](tools/ocs/ASSISTANT_SERVICE.md). This local GUI
+integration has not been merged or published yet.
+
+On Windows, build the patched CAD source in a sibling `OpenCADStudio-source`
+folder, then run `powershell -ExecutionPolicy Bypass -File
+tools\ocs\start-vibe-engineer.ps1` from this repository. The source patch and
+reproduction steps are in [patches](patches/README.md).
+
 The first milestone (a deterministic CAD integration smoke test) is merged to
 `main` (PR #1), and the second milestone — a trustworthy read/index layer for
 an existing drawing with provenance and stale-index detection — is merged too

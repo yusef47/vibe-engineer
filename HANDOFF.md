@@ -4,6 +4,37 @@ Updated: 2026-11-18 (Africa/Cairo)
 
 ## Current state
 
+- **Local GUI assistant bridge (2026-11-18, not merged):** The Windows
+  Vibe Engineer source fork now reconnects its right-side Assistant panel to
+  a loopback Python service. The companion repo has
+  `tools/ocs/assistant_service.py`, `test_assistant_service.py`, and
+  `ASSISTANT_SERVICE.md` on `feat/live-assistant-bridge`. The panel displays
+  conversation, service status, and structured source identity; its Change
+  Plan tab honestly remains inactive. The service reads the live GUI via
+  the same build's `--mcp`, using only nonlaunching session discovery and
+  state/query tools. Without a key it handles `/help`, `/summary`, and
+  `/entity HANDLE`; ordinary model questions explain the missing key with
+  zero provider requests. With a local OpenRouter key (the existing QA model
+  candidate is preset, with an optional override), it routes supported read-only questions through the existing
+  validated `drawing_qa.py` path. No edit or structural-assessment tool is
+  exposed. The local source fork is not pushed to the upstream OCS remote.
+  The default QA model is preset to `z-ai/glm-5.3-flash`; only the local key
+  is needed to attempt a real model question, and the panel can pick up a newly
+  added ignored `.env` key on reconnect. Model availability, response, and
+  pricing have not yet been verified with a real provider call.
+  Verification: 20/20 backend tests and Python compile passed; Rust binary
+  check/build passed; an actual GUI/MCP/TCP smoke on a blank `Drawing1`
+  returned a source-bound `/summary` with zero entities, `api_key:false`,
+  and cost 0. An official MCP window capture visually confirmed a clean
+  green connected status, no-key notice, enabled Send, and the right-side
+  Conversation/Sources/Change Plan tabs. A real OpenRouter response is still
+  unverified; the six-entity content check uses fake MCP/model. The tracked
+  `tools/ocs/start-vibe-engineer.ps1` starts the local editor and service on
+  demand without storing a key. `patches/ocs-v2026.46-vibe-engineer.patch`
+  preserves the source-fork changes against upstream commit `8b4d270`;
+  reverse-apply check against the local source HEAD passed. See
+  `tools/ocs/ASSISTANT_SERVICE.md` and `patches/README.md`. PR #5 is open
+  against `feat/drawing-qa` (PR #4) for review; neither PR is merged.
 - Product direction and execution gates are documented in `PLAN.md`.
 - **Milestone 1 (deterministic CAD integration smoke test) is complete and
   merged to `main` (PR #1).** All 15 steps pass against the real Open CAD
