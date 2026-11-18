@@ -3,15 +3,16 @@
 
 Checks the `drawing_qa` module in three tiers:
 
-- UNIT (U1–U31): no OCS process, no network, no API key. The index is built
+- UNIT (U1–U33): no OCS process, no network, no API key. The index is built
   from canned `--serve` replies (the canned entities mirror the milestone-1
   synthetic fixture: 4 lines on TEST-BOUNDARY, a circle r=5.0 on
   TEST-SYMBOLS, one text — handles 86–8B) and the model is a fake client
   with a canned JSON reply. These checks are MOCKED model calls by
   definition; they prove the pipeline, not the provider. U27/U28 pin the
-  Codex PR #4 review repros (display composed from cited index values,
-  structural prose never displayed); U29–U31 pin the cumulative spend-cap
-  semantics.
+  Codex PR #4 review round-1 repros (deterministic display from index
+  values, structural prose never displayed); U29–U31 pin the cumulative
+  spend-cap semantics; U32/U33 pin the round-2 repros (displayed-fields
+  reporting and refusal prose replaced by a local neutral message).
 - REAL BINARY (R1–R4): the pinned OpenCADStudio build, headless. The
   fixture is produced by the milestone-1 tooling, indexed through the real
   `--serve` channel, and the QA flow runs against the REAL index with a
@@ -202,7 +203,13 @@ def u1_english_count_answered() -> str:
         assert ans.evidence["cited_handles"] == []  # count facts, no handles
         assert ans.evidence["cited_fact_paths"] == \
             ["entity_counts.total", "entity_counts.by_type.Line"]
-        assert ans.evidence["answer_source"] == "composed_from_cited_index_values"
+        # deterministic render covers the whole counts facts; every rendered
+        # field is reported (displayed ⊄ cited is expected and listed)
+        assert ans.evidence["answer_source"] == "deterministic_from_index_facts"
+        displayed = ans.evidence["displayed_fact_paths"]
+        assert "entity_counts.total" in displayed
+        assert "entity_counts.by_type.Circle" in displayed
+        assert ans.evidence["displayed_handles"] == []
         ev = ans.evidence
         assert ev["source_path"].endswith("fake_drawing.dxf")
         assert len(ev["source_sha256"]) == 64
@@ -272,6 +279,8 @@ def u4_handle_lookup() -> str:
         # displayed answer composed from the record's own values
         assert "8A" in ans.answer_text and "Circle" in ans.answer_text
         assert "5.0" in ans.answer_text, ans.answer_text
+        assert ans.evidence["displayed_handles"] == ["8A"]
+        assert ans.evidence["answer_source"] == "deterministic_from_index_facts"
         return "handle 8A excerpt: one slim record (radius 5.0, no raw, no path/sha)"
 
 
@@ -291,6 +300,9 @@ def u5_text_search() -> str:
         assert ans.evidence["cited_handles"] == ["8B"]
         assert "8B" in ans.answer_text \
             and "SMOKE-TEST SYNTHETIC FIXTURE" in ans.answer_text, ans.answer_text
+        assert ans.evidence["displayed_handles"] == ["8B"]
+        assert "query" in ans.evidence["displayed_fact_paths"] \
+            and "match_count" in ans.evidence["displayed_fact_paths"]
         return "text search: 1 match, cited handle validated"
 
 
@@ -312,6 +324,11 @@ def u6_summary_excerpt_is_capped() -> str:
         # summary display = exactly the cited values, never model prose
         assert "entity_counts.total = 6" in ans.answer_text, ans.answer_text
         assert "86" in ans.answer_text
+        assert ans.evidence["answer_source"] == "composed_from_cited_values"
+        assert ans.evidence["cited_fact_paths"] == \
+            ans.evidence["displayed_fact_paths"] == ["entity_counts.total"]
+        assert ans.evidence["cited_handles"] == \
+            ans.evidence["displayed_handles"] == ["86"]
         return "summary excerpt capped at 2 of 6 records; truncated=true"
 
 
@@ -320,15 +337,20 @@ def u7_missing_facts_model_declares_unsupported() -> str:
         idx, _src = build_test_index(tmp)
         client = FakeClient(reply={
             "answerable": False,
+            "reason_code": "missing_facts",
             "reason": "The index does not record design dates."})
         ans = qa.answer_question(idx, "When was this drawing designed?",
                                  client)
         assert ans.status == "cannot_answer", (ans.status, ans.detail)
-        assert "design dates" in ans.detail
+        # the DISPLAYED refusal text is the LOCAL neutral template; the
+        # model's own prose never reaches the user
+        assert "not present in the indexed excerpt" in ans.detail, ans.detail
+        assert "design dates" not in ans.detail
+        assert ans.evidence["model_reason_code"] == "missing_facts"
         assert len(client.calls) == 1  # one bounded call, then honest refusal
         payload = user_payload(client)
         assert "unresolved_gaps" in payload["facts"]
-        return "missing fact -> model answerable=false -> CANNOT ANSWER (exit 4)"
+        return "missing fact -> answerable=false + reason_code -> LOCAL neutral CANNOT ANSWER (exit 4)"
 
 
 def u8_structural_question_refused_without_call_en() -> str:
@@ -671,8 +693,12 @@ def u27_count_prose_mismatch_repro() -> str:
         assert "Circle 1" in text, text          # the true cited value
         assert "4 circles" not in text, text     # the model's wrong prose
         assert "There are" not in text, text     # no model wording displayed
-        return ("repro 1: valid citation + wrong prose -> display composed "
-                "from cited values (Circle 1)")
+        # deterministic count render: every rendered field is reported
+        assert ans.evidence["answer_source"] == "deterministic_from_index_facts"
+        assert "entity_counts.by_type.Circle" in \
+            ans.evidence["displayed_fact_paths"]
+        return ("repro 1: valid citation + wrong prose -> deterministic "
+                "count display (Circle 1)")
 
 
 def u28_structural_prose_never_displayed() -> str:
@@ -692,8 +718,10 @@ def u28_structural_prose_never_displayed() -> str:
         for word in ("safe", "reinforced", "column", "structural", "beam"):
             assert word not in lowered, (word, ans.answer_text)
         assert "entity_counts.total = 6" in ans.answer_text, ans.answer_text
-        assert ans.evidence["answer_source"] == \
-            "composed_from_cited_index_values"
+        assert ans.evidence["answer_source"] == "composed_from_cited_values"
+        # summary render = exactly the cited fields/handles
+        assert ans.evidence["cited_fact_paths"] == \
+            ans.evidence["displayed_fact_paths"] == ["entity_counts.total"]
         return "repro 2: structural prose never displayed; only cited values"
 
 
@@ -798,6 +826,77 @@ def u31_cli_help_labels_cap_honestly() -> str:
         assert needle in text, (needle, proc.stdout)
     return ("CLI help states the cap is a cumulative post-call stop and "
             "names the dashboard as the hard limit")
+
+
+def u32_displayed_fields_reported_count() -> str:
+    """Codex PR #4 review round 2, repro 1: the model cites ONLY
+    entity_counts.total for a count question. The deterministic render
+    still shows the whole counts facts, so EVERY rendered field must be
+    listed in the evidence (displayed_fact_paths) and every listed field
+    must resolve in the excerpt — the citation/display correspondence is
+    checkable and the "cited values only" claim is no longer made."""
+    with tempfile.TemporaryDirectory() as tmp:
+        idx, _src = build_test_index(tmp)
+        client = FakeClient(reply={
+            "answerable": True,
+            "answer": "The drawing contains 6 entities.",
+            "citations": [{"fact": "entity_counts.total"}]})
+        ans = qa.answer_question(idx, EN_COUNT_Q, client)
+        assert ans.status == "answered", (ans.status, ans.detail)
+        ev = ans.evidence
+        assert ev["cited_fact_paths"] == ["entity_counts.total"]
+        displayed = ev["displayed_fact_paths"]
+        # the full deterministic render is reported, not claimed as cited
+        assert "entity_counts.total" in displayed
+        assert "entity_counts.by_type.Circle" in displayed
+        assert "entity_counts.by_type.Line" in displayed
+        assert any(p.startswith("entity_counts.by_layer.")
+                   for p in displayed), displayed
+        # correspondence: every DISPLAYED path resolves inside the excerpt
+        # facts (fresh accessors, exactly what the model saw)
+        payload = user_payload(client)
+        for path in displayed:
+            found, _value = qa._resolve_fact_path(payload["facts"], path)
+            assert found, (path, displayed)
+        # ...and every path whose VALUE appears in the text is listed
+        assert "Circle 1" in ans.answer_text \
+            and "entity_counts.by_type.Circle" in displayed
+        assert ev["answer_source"] == "deterministic_from_index_facts"
+        return ("repro: count display beyond the cited field -> every "
+                "rendered path listed and resolvable")
+
+
+def u33_refusal_prose_never_displayed() -> str:
+    """Codex PR #4 review round 2, repro 2: a structural-hallucinating
+    refusal reason ("This structure is unsafe and requires reinforcement.")
+    must NOT reach the user; the displayed cannot-answer text is the local,
+    neutral message."""
+    with tempfile.TemporaryDirectory() as tmp:
+        idx, _src = build_test_index(tmp)
+        client = FakeClient(reply={
+            "answerable": False,
+            "reason": "This structure is unsafe and requires "
+                      "reinforcement."})
+        ans = qa.answer_question(idx, "Summarize this drawing.", client)
+        assert ans.status == "cannot_answer", (ans.status, ans.detail)
+        lowered = ans.detail.lower()
+        for word in ("unsafe", "reinforced", "structure", "safety"):
+            assert word not in lowered, (word, ans.detail)
+        # neutral local fallback (no reason_code supplied)
+        assert "could not answer this question from the index facts" \
+            in ans.detail, ans.detail
+        assert ans.evidence["model_reason_code"] is None
+        # validated reason_code routes to its own local template
+        client2 = FakeClient(reply={
+            "answerable": False,
+            "reason_code": "question_unsupported",
+            "reason": "structural nonsense"})
+        ans2 = qa.answer_question(idx, "Summarize this drawing.", client2)
+        assert ans2.status == "cannot_answer", (ans2.status, ans2.detail)
+        assert "cannot be answered from CAD index facts" in ans2.detail
+        assert "nonsense" not in ans2.detail
+        return ("repro: structural refusal prose never displayed; local "
+                "neutral message by reason_code")
 
 
 # ---- real-binary tier (SKIP when the pinned OCS binary is missing) -----------
@@ -1000,6 +1099,12 @@ def main() -> int:
           u30_unreported_cost_flagged_and_malformed_log_tolerated)
     check("U31 cli: --help labels the cap honestly (cumulative post-call "
           "stop, dashboard hard limit)", u31_cli_help_labels_cap_honestly)
+    check("U32 unit: Codex round-2 repro 1 — count display beyond the cited "
+          "field; every rendered path reported and resolvable",
+          u32_displayed_fields_reported_count)
+    check("U33 unit: Codex round-2 repro 2 — refusal prose never displayed; "
+          "local neutral message by reason_code",
+          u33_refusal_prose_never_displayed)
 
     ctx: dict = {}
 

@@ -37,11 +37,16 @@ model's free wording is never displayed (see the trust contract).
   (Arabic-Indic digits are normalized). Invalid citations or invented
   numbers → the answer is DISCARDED (exit 5), never displayed.
 - **Displayed claims are bound to cited values.** What the user finally sees
-  is composed LOCALLY from the validated cited index values (counts/layers/
-  handle/text intents render deterministically from their facts; summary and
-  unmapped intents render exactly the cited fields). The model's own wording
-  is never shown, so unsupported prose — e.g. "safe reinforced columns" —
-  cannot reach the display at all (U27/U28 pin the PR #4 review repros).
+  is composed LOCALLY from index values: count/layer/handle/text intents
+  render deterministically from their facts (every rendered field is
+  reported in the evidence as `displayed_fact_paths` / `displayed_handles`,
+  so the citation/display correspondence is checkable); summary and
+  unmapped intents render exactly the cited fields. The model's own wording
+  is never shown — neither answers nor refusal reasons (a cannot-answer
+  displays a local neutral message chosen by the validated `reason_code`) —
+  so unsupported prose such as "safe reinforced columns" or a structural
+  refusal hallucination cannot reach the display at all (U27/U28/U32/U33
+  pin the PR #4 review repros).
 - **Honest "cannot answer".** Structural-safety questions and edit requests
   are refused deterministically WITHOUT any model call (the index holds no
   confirmed structural data; this slice is read-only). Questions the facts
@@ -95,7 +100,7 @@ python tools\ocs\drawing_qa.py ask --index idx.json --usage-log usage.jsonl --sh
 # 4. Inspect what WOULD be sent to the model (no network, no key, no cost)
 python tools\ocs\drawing_qa.py excerpt --index idx.json --question "How many circles?"
 
-# 5. Test suite: 31 unit + 4 real-binary checks; M1 (one REAL model call)
+# 5. Test suite: 33 unit + 4 real-binary checks; M1 (one REAL model call)
 #    runs ONLY with --real-openrouter AND the key set (SKIP otherwise)
 python tools\ocs\test_drawing_qa.py
 python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25
@@ -107,7 +112,7 @@ unverifiable index refusal; 4 cannot answer from the available drawing facts
 (missing key, HTTP error, timeout, unparseable output, invalid citations,
 spend cap reached); 1 unexpected; 130 interrupted.
 
-Test tiers — do not confuse them: U1–U31 are MOCKED model calls (a fake
+Test tiers — do not confuse them: U1–U33 are MOCKED model calls (a fake
 client with canned JSON; no network, no key, no cost). R1–R4 run the real
 pinned OCS binary but still a fake model. Only M1 is a REAL OpenRouter call
 (one Arabic question, `max_tokens=300`, inside the spend cap); when it is

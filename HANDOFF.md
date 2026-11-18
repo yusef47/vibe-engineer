@@ -47,17 +47,20 @@ Updated: 2026-11-18 (Africa/Cairo)
   excerpt before display (handles must exist among the returned records,
   fact paths must resolve, stated numbers must exist in the facts —
   Arabic-Indic digits normalized), and the DISPLAYED answer is composed
-  locally from the cited index values (the model's free wording is never
-  shown, so unsupported structural prose cannot reach the user — the PR #4
-  review-round-1 fixes below). Honest "cannot answer" (structural-safety
+  locally from index values (count/layer/handle/text intents render
+  deterministically from their facts with every rendered field listed in
+  the evidence; summary/unmapped render exactly the cited fields; the
+  model's free wording — answers AND refusal reasons — is never shown, so
+  unsupported prose cannot reach the user; see the PR #4 review rounds
+  below). Honest "cannot answer" (structural-safety
   questions and edit requests are refused deterministically with ZERO model
   calls), one request per question (no loops of any kind), key from
   `$OPENROUTER_API_KEY` (or an ignored repo-root `.env` seeding it; redacted
   from all errors), spending cap default $5.00 — CUMULATIVE across every run
   sharing the default usage log, a post-call stop honestly labeled (not a
   pre-call guarantee; a hard guarantee needs an OpenRouter dashboard limit),
-  usage logging without key or prompt content. Verified: 36/36 checks
-  (31 unit + 4 real-binary; the one real-model check honestly SKIPs without
+  usage logging without key or prompt content. Verified: 38/38 checks
+  (33 unit + 4 real-binary; the one real-model check honestly SKIPs without
   a key — see the PR #4 review section below). All four OCS regression
   suites re-ran green on the same day (one documented `os error 1175` save
   flake per environment note; re-run remedy).
@@ -87,7 +90,7 @@ Updated: 2026-11-18 (Africa/Cairo)
      key in every error path, usage records with tokens/cost/latency and a
      question HASH (never the key, never prompt content). Excerpts never
      contain the source path or file hash.
-  2. `tools/ocs/test_drawing_qa.py` (new): 31 unit checks (U1–U31, fake
+  2. `tools/ocs/test_drawing_qa.py` (new): 33 unit checks (U1–U33, fake
      model, no network/no key), 4 real-binary checks (R1–R4, real pinned
      OCS + fake model), 1 real-model check (M1) that runs ONLY with
      `--real-openrouter` AND the key set, else SKIP (never proof). R3
@@ -95,8 +98,9 @@ Updated: 2026-11-18 (Africa/Cairo)
      invocation instead of two, which halves exposure to the documented
      `os error 1175` save flake and matches the declared R3-on-R2
      dependency (no behavioral safety rule touched). U27/U28 pin the
-     Codex PR #4 review repros and U29–U31 pin the cumulative spend-cap
-     semantics (see the review-round-1 section below).
+     Codex PR #4 review round-1 repros, U29–U31 pin the cumulative
+     spend-cap semantics, and U32/U33 pin the round-2 repros (see the
+     review sections below).
   3. `tools/ocs/.env.example` (new): documents `OPENROUTER_API_KEY` /
      `OPENROUTER_MODEL` / `OPENROUTER_SPEND_CAP_USD`; copy to repo-root
      `.env` (gitignored). `drawing_qa.py` seeds only `OPENROUTER_*` keys
@@ -121,14 +125,14 @@ python tools\ocs\drawing_qa.py excerpt --index idx.json --question "..."   # wha
 - **Exact test commands and results (this session, 2026-11-18):**
 
 ```
-$ python tools\ocs\test_drawing_qa.py       → PASS, 36/36 checks (unit 31/31, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 — the post-review-round-1 run (display composition + cumulative cap); the pre-fix suite was 31/31, and the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts that day (re-run remedy, no auto-retry by design)
+$ python tools\ocs\test_drawing_qa.py       → PASS, 38/38 checks (unit 33/33, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 — the post-review-round-2 run (displayed-fields reporting + local neutral refusal messages); the post-round-1 suite was 36/36 (the pre-fix suite 31/31), and the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts that day (re-run remedy, no auto-retry by design)
 $ python tools\ocs\ocs_smoke_test.py        → 15/15 steps PASS, exit 0 (one earlier run hit the documented os error 1175 save flake; passed on re-run, no retry added by design)
 $ python tools\ocs\test_drawing_index.py    → 23/23 checks PASS (unit 12/12, real 11/11, 0 skips), exit 0 (same flake hit R5/R9 on two earlier attempts, a different save each time; passed on re-run)
 $ python tools\ocs\test_safe_workdir.py     → 6/6 checks passed, exit 0
 $ python tools\ocs\test_stale_revision.py   → 4/4 checks passed, exit 0
 ```
 
-- **Mocked vs real — read this before trusting "tests pass":** U1–U31 are
+- **Mocked vs real — read this before trusting "tests pass":** U1–U33 are
   MOCKED model calls (`FakeClient` with canned JSON; prove the pipeline).
   R1–R4 use the REAL pinned OCS binary for index building/staleness but a
   FAKE model. **M1 is the only REAL OpenRouter call and it did NOT run in
@@ -239,6 +243,51 @@ drawing-index regression suite is still 23/23):
   model calls were made this round either (no key on this machine; costs
   observed: none). With the cumulative cap, repeated real-model runs
   accumulate in the default usage log; archive/rotate the file to reset.
+
+## PR #4 review round 2 (Codex) — fixes on `feat/drawing-qa`
+
+- Codex verified the round-1 fixes and reproduced two remaining
+  display/provenance gaps on `4cfe3ed`; both are fixed here with regression
+  tests (U32/U33), keeping the PR open for re-review (merge stays gated).
+- **Gap 1 — count answers displayed facts never cited.** Repro: "How many
+  entities are in this drawing?" with the model citing only
+  `entity_counts.total` still displayed Circle/Line/Text and layer counts,
+  while the evidence claimed composition "from cited values". Fix (the
+  evidence-reporting option): the deterministic count/layer/handle/text
+  renders are retained (per the round-1 endorsement), and the evidence block
+  now reports EVERY rendered field as `displayed_fact_paths` /
+  `displayed_handles` next to `cited_fact_paths` / `cited_handles`. The
+  inaccurate claim is gone: `answer_source` is now
+  `deterministic_from_index_facts` (count/layers/text/handle-with-record
+  renders) or `composed_from_cited_values` (summary/unmapped = exactly the
+  cited fields; the old string `composed_from_cited_index_values` was
+  removed). The refusal contract also changes: a cannot-answer now carries
+  `model_reason_code` (None when the model gives none) and
+  `citations_validated: false`. U32 pins the repro: every displayed path is
+  listed and resolves inside the excerpt facts.
+- **Gap 2 — model prose still displayed via the cannot-answer branch.**
+  Repro: `{"answerable": false, "reason": "This structure is unsafe and
+  requires reinforcement."}` was returned as `detail` and printed verbatim.
+  Fix: the displayed refusal text is now a LOCAL, neutral bilingual template
+  selected by the model's VALIDATED `reason_code` (`missing_facts` /
+  `question_unsupported`, with a neutral fallback when the code is missing
+  or unknown). The model's raw `reason` is never displayed (it stays in the
+  SYSTEM_PROMPT contract for debugging only, explicitly marked "not shown
+  to the user"). U33 pins the structural-hallucination refusal: no model
+  word reaches the display, and both reason codes plus the fallback are
+  exercised.
+- Doc updates: module docstring steps 7–8 and the model-facing caveat now
+  state the no-model-prose rule covers refusal reasons too and that
+  displayed fields are reported; `tools/ocs/README.md` rewords the
+  composition bullet and updates counts.
+- Exact results this round: `python tools\ocs\test_drawing_qa.py` → PASS
+  38/38 (unit 33/33, real binary 4/4, M1 SKIP-honest), exit 0;
+  `python tools\ocs\test_drawing_index.py` → 23/23 PASS, exit 0. No real
+  model calls (no key on this machine; costs observed: none). PR
+  description updated for the new counts, the displayed-fields reporting,
+  the local refusal messages, and the cumulative POST-call cap semantics
+  (no "bounds a run below the cap" claim; the dashboard stays the hard
+  limit).
 
 ## PR #3 record (merged as `5d895d2` — history)
 
@@ -533,9 +582,11 @@ locked/frozen layers not exercised; GUI (`--mcp`) still workstation-only.
 
 After Codex review of `feat/drawing-qa` (PR #4):
 
-1. **Real-model verification (founder, ~2 minutes, <$0.25):** set
-   `OPENROUTER_API_KEY`, run
-   `python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25`,
+1. **Real-model verification (founder, ~2 minutes, expect a few cents):**
+   set `OPENROUTER_API_KEY`, run
+   `python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25`
+   (the cap is a cumulative POST-call stop, not a pre-call guarantee —
+   the OpenRouter dashboard limit is the hard bound),
    then a few `drawing_qa.py ask` questions (Arabic count/layers/handle,
    English text search, one missing-fact question). Record the model's
    actual answers, token counts, and the costs OpenRouter reports into this

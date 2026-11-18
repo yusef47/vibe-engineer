@@ -37,19 +37,23 @@ no model loops of any kind — unbounded repair loops are deliberately absent):
      own text must exist in the excerpt facts (Arabic-Indic digits are
      normalized). Invalid citations or unsupported numbers -> the answer
      is discarded (exit 5), never displayed;
-  7. the DISPLAYED answer is composed locally, in the question's language,
-     from the validated cited index values ONLY (count/layer/handle/text
-     intents are rendered deterministically from their facts; summary and
-     unmapped intents from exactly the cited fields). The model's free
-     wording is NEVER displayed, so claims the index does not support —
-     for example structural prose such as "safe reinforced columns" —
-     cannot reach the user at all;
+  7. the DISPLAYED answer is composed locally, in the question's language:
+     count/layer/handle/text intents render deterministically from their
+     intent facts (deterministic output; every rendered field is reported
+     in the evidence as displayed_fact_paths / displayed_handles so the
+     citation/display correspondence is checkable), and summary/unmapped
+     intents render EXACTLY the cited fields. The model's free wording is
+     NEVER displayed — neither answers nor refusal reasons — so claims the
+     index does not support (e.g. "safe reinforced columns") cannot reach
+     the user at all;
   8. a factual answer is displayed only with its evidence block: source
      path, source SHA-256, document revision, indexed-at timestamp, the
-     cited handles and fact paths. "Cannot answer" is stated clearly
-     (exit 4) when the facts do not support the question — nothing
-     structural, no loads, no units, nothing not in the index is ever
-     inferred.
+     cited handles/fact paths and the displayed fields. "Cannot answer"
+     (exit 4) shows a LOCAL, neutral missing-facts message selected by the
+     model's validated reason_code (missing_facts / question_unsupported,
+     neutral fallback otherwise) — never the model's own refusal text.
+     Nothing structural, no loads, no units, nothing not in the index is
+     ever inferred.
 
 Trust contract carried over from milestone 2 (`drawing_index.py`):
 
@@ -403,9 +407,10 @@ CAVEATS = [
     "is needed, set answerable=false and say briefly what is missing",
     "every number you state must come from these facts; cite the entity "
     "handles and/or fact paths you actually used",
-    "the final displayed answer is composed locally from the values of the "
-    "facts you cite (your wording is not shown); cite exactly the facts "
-    "that answer the question",
+    "the final displayed answer is composed locally from index values "
+    "(your wording is not shown, and refusal reasons are replaced by a "
+    "local neutral message); cite exactly the facts that answer the "
+    "question",
 ]
 
 SYSTEM_PROMPT = """You answer questions about ONE CAD drawing strictly from an excerpt of its local index (JSON).
@@ -414,14 +419,14 @@ Rules:
 - Use ONLY the facts in the excerpt. Never invent or infer anything not present.
 - Never claim structural meaning: the index records CAD type/layer strings verbatim and every classification is null. Do not identify beams, columns, slabs, loads, or safety.
 - Never state units; the index does not record units.
-- If the excerpt does not contain the answer, set "answerable" to false and explain briefly what is missing, in the question's language.
+- If the excerpt does not contain the answer, set "answerable" to false and "reason_code" to exactly one of: "missing_facts" (the facts needed are not in the excerpt) or "question_unsupported" (the question cannot be answered from CAD index facts). Also write a brief "reason" in the question's language — it is kept for debugging but is NOT shown to the user.
 - If it does, set "answerable" to true, write a concise answer in the SAME language as the question (an Arabic question gets an Arabic answer; an English question gets an English answer), and list "citations": the entity handles and/or fact paths you used.
 - Use Western digits (0-9) for all numbers in the answer.
 - "fact" citations are dotted paths into the excerpt, e.g. "entity_counts.by_type.Circle" or "layers.TEST-SYMBOLS".
 - Output EXACTLY ONE JSON object and nothing else:
   {"answerable": true, "answer": "...", "citations": [{"handle": "8A"}, {"fact": "entity_counts.total"}]}
   or
-  {"answerable": false, "reason": "..."}"""
+  {"answerable": false, "reason_code": "missing_facts", "reason": "..."}"""
 
 
 def _user_content(question: str, facts: dict) -> str:
@@ -600,10 +605,15 @@ def _validate_numbers_general(answer: str, facts: dict,
     return errors
 
 
-# ---- displayed-answer composition (from cited index values only) -------------
-# The model's free wording is NEVER displayed. Every displayed claim is a
-# value read back from the validated cited fields of the excerpt, so claims
-# the index does not support (e.g. structural prose) cannot reach the user.
+# ---- displayed-answer composition --------------------------------------------
+# The model's free wording is NEVER displayed — neither answers nor refusal
+# reasons. Displayed ANSWERS are composed locally from index values:
+# count/layer/handle/text intents render deterministically from their intent
+# facts (deterministic output, per the PR #4 round-1 review), summary and
+# unmapped intents render exactly the cited fields. Every field/handle that
+# is rendered is reported in the evidence block (displayed_fact_paths /
+# displayed_handles), so the citation/display correspondence is checkable:
+# what the model CITED and what was actually DISPLAYED are both listed.
 
 _TYPE_GLOSS_AR = {"Line": "خطوط", "Circle": "دوائر", "Text": "نصوص",
                   "Arc": "أقواس", "Polyline": "خطوط متعددة",
@@ -644,10 +654,17 @@ def _text_value_of(rec: dict) -> str | None:
     return None
 
 
-def _compose_count(facts: dict, lang: str) -> str:
+def _compose_count(facts: dict, lang: str) -> tuple[str, list[str]]:
+    """Deterministic count render. Returns (text, displayed_fact_paths):
+    the render covers the WHOLE entity_counts facts regardless of which
+    paths the model cited (the model cannot make a count answer incomplete),
+    and every rendered path is reported for the evidence block."""
     ec = facts.get("entity_counts") or {}
     by_type = ec.get("by_type") or {}
     by_layer = ec.get("by_layer") or {}
+    paths = ["entity_counts.total"]
+    paths += [f"entity_counts.by_type.{ctype}" for ctype in by_type]
+    paths += [f"entity_counts.by_layer.{name}" for name in by_layer]
     if lang == "ar":
         parts = [f"الإجمالي {_fmt_value(ec.get('total'))}"]
         for ctype, n in by_type.items():
@@ -659,7 +676,7 @@ def _compose_count(facts: dict, lang: str) -> str:
             layers = "، ".join(f"{name} {_fmt_value(n)}"
                                for name, n in by_layer.items())
             text += f" حسب الطبقة: {layers}."
-        return text
+        return text, paths
     parts = [f"total {_fmt_value(ec.get('total'))}"]
     parts += [f"{ctype} {_fmt_value(n)}" for ctype, n in by_type.items()]
     text = "Entity counts (from the index): " + ", ".join(parts) + "."
@@ -667,20 +684,22 @@ def _compose_count(facts: dict, lang: str) -> str:
         layers = ", ".join(f"{name} {_fmt_value(n)}"
                            for name, n in by_layer.items())
         text += f" By layer: {layers}."
-    return text
+    return text, paths
 
 
-def _compose_layers(facts: dict, lang: str) -> str:
+def _compose_layers(facts: dict, lang: str) -> tuple[str, list[str]]:
     layers = facts.get("layers") or {}
+    paths = [f"layers.{name}" for name in layers]
     if lang == "ar":
         body = "؛ ".join(f"{name} {_fmt_value(n)}"
                          for name, n in layers.items())
-        return f"عدد العناصر حسب الطبقة (من الفهرس): {body}."
+        return f"عدد العناصر حسب الطبقة (من الفهرس): {body}.", paths
     body = ", ".join(f"{name} {_fmt_value(n)}" for name, n in layers.items())
-    return f"Layer counts (from the index): {body}."
+    return f"Layer counts (from the index): {body}.", paths
 
 
-def _compose_record(rec: dict, lang: str) -> str:
+def _compose_record(rec: dict, lang: str) -> tuple[str, list[str]]:
+    """Full record render. Returns (text, displayed_handles)."""
     geometry = _fmt_geometry(rec.get("geometry"))
     text_value = _text_value_of(rec)
     color = rec.get("color")
@@ -694,7 +713,7 @@ def _compose_record(rec: dict, lang: str) -> str:
         if color is not None:
             parts.append(f"اللون: {_fmt_value(color)}")
         parts.append("التصنيف: null (لا يوجد تصنيف إنشائي مؤكد)")
-        return "؛ ".join(parts)
+        return "؛ ".join(parts), [str(rec.get("handle"))]
     parts = [f"handle {rec.get('handle')}", f"type {rec.get('type')}",
              f"layer {rec.get('layer')}"]
     if geometry:
@@ -703,7 +722,7 @@ def _compose_record(rec: dict, lang: str) -> str:
     if color is not None:
         parts.append(f"color {_fmt_value(color)}")
     parts.append("classification null")
-    return ", ".join(parts)
+    return ", ".join(parts), [str(rec.get("handle"))]
 
 
 def _compose_record_short(rec: dict, lang: str) -> str:
@@ -717,11 +736,18 @@ def _compose_record_short(rec: dict, lang: str) -> str:
     return body + (f", text {text_value!r}" if text_value else "")
 
 
-def _compose_text(facts: dict, records: list[dict], lang: str) -> str:
+def _compose_text(facts: dict, records: list[dict],
+                  lang: str) -> tuple[str, list[str], list[str]]:
+    """Text render. Returns (text, displayed_fact_paths, displayed_handles):
+    the paths/handles whose values appear in the rendered text."""
     if "match_count" in facts:
         needle = facts.get("query")
         count = facts.get("match_count")
         truncated = facts.get("truncated")
+        paths = ["query", "match_count"]
+        if truncated:
+            paths.append("truncated")
+        handles = [str(r.get("handle")) for r in records]
         if lang == "ar":
             head = (f'بحث النص "{needle}": عدد المطابقات {_fmt_value(count)}'
                     f'{" (مقاطع إضافية موجودة)" if truncated else ""}.')
@@ -733,55 +759,75 @@ def _compose_text(facts: dict, records: list[dict], lang: str) -> str:
             body = "; ".join(_compose_record_short(rec, "en")
                              for rec in records)
         if body:
-            return f"{head} {body}."
-        return head
+            return f"{head} {body}.", paths, handles
+        return head, paths, handles
     values = facts.get("all_recorded_text_values") or []
     if lang == "ar":
         if not values:
-            return "لا توجد قيم نصية مسجلة في الفهرس."
+            return "لا توجد قيم نصية مسجلة في الفهرس.", [], []
         return ("القيم النصية المسجلة (من الفهرس): "
-                + "؛ ".join(f'"{v}"' for v in values) + ".")
+                + "؛ ".join(f'"{v}"' for v in values) + "."), \
+            ["all_recorded_text_values"], []
     if not values:
-        return "No text values are recorded in the index."
+        return "No text values are recorded in the index.", [], []
     return ("Recorded text values (from the index): "
-            + "; ".join(f'"{v}"' for v in values) + ".")
+            + "; ".join(f'"{v}"' for v in values) + "."), \
+        ["all_recorded_text_values"], []
 
 
 def _compose_from_citations(facts: dict, lang: str, cited_handles: list[str],
                             fact_paths: list[str],
-                            records_by_handle_ci: dict) -> str:
+                            records_by_handle_ci: dict
+                            ) -> tuple[str, list[str], list[str]]:
+    """Summary/unmapped render: EXACTLY the cited fields/handles, nothing
+    else. Returns (text, rendered_fact_paths, rendered_handles) — only what
+    actually made it into the text."""
     parts = []
+    rendered_paths = []
     for path in fact_paths:
         found, value = _resolve_fact_path(facts, path)
         if found:
             parts.append(f"{path} = {_fmt_value(value)}")
+            rendered_paths.append(path)
+    rendered_handles = []
     for handle in cited_handles:
         rec = records_by_handle_ci.get(handle.lower())
         if rec is not None:
             parts.append(_compose_record_short(rec, lang))
+            rendered_handles.append(rec["handle"])
     if lang == "ar":
-        return ("من الفهرس (قيم الحقول المُستشهد بها فقط): "
+        text = ("من الفهرس (قيم الحقول المُستشهد بها فقط): "
                 + "؛ ".join(parts) + ".") if parts else ""
-    return ("From the index (only the cited values): "
-            + "; ".join(parts) + ".") if parts else ""
+    else:
+        text = ("From the index (only the cited values): "
+                + "; ".join(parts) + ".") if parts else ""
+    return text, rendered_paths, rendered_handles
 
 
 def _compose_answer(intent: str, lang: str, facts: dict,
                     records: list[dict], cited_handles: list[str],
                     fact_paths: list[str],
                     records_by_handle_ci: dict,
-                    requested_handle: str | None) -> str:
+                    requested_handle: str | None
+                    ) -> tuple[str, list[str], list[str], bool]:
+    """Compose the displayed answer. Returns
+    (text, displayed_fact_paths, displayed_handles, cited_only) where
+    cited_only=True means the render used exactly the cited fields."""
     if intent == INTENT_COUNT:
-        return _compose_count(facts, lang)
+        text, paths = _compose_count(facts, lang)
+        return text, paths, [], False
     if intent == INTENT_LAYERS:
-        return _compose_layers(facts, lang)
+        text, paths = _compose_layers(facts, lang)
+        return text, paths, [], False
     if intent == INTENT_TEXT:
-        return _compose_text(facts, records, lang)
+        return (*_compose_text(facts, records, lang), False)
     if intent == INTENT_HANDLE and records:
         rec = records_by_handle_ci.get((requested_handle or "").lower())
-        return _compose_record(rec or records[0], lang)
-    return _compose_from_citations(facts, lang, cited_handles, fact_paths,
-                                   records_by_handle_ci)
+        text, handles = _compose_record(rec or records[0], lang)
+        return text, [], handles, False
+    text, paths, handles = _compose_from_citations(
+        facts, lang, cited_handles, fact_paths, records_by_handle_ci)
+    return text, paths, handles, True
 
 
 def _read_usage_log_stats(path: str) -> tuple[float, int, int]:
@@ -1077,12 +1123,38 @@ def answer_question(idx: "di.DrawingIndex", question: str, client,
                       detail=str(exc), model_called=True)
 
     if reply.get("answerable") is False:
-        reason = reply.get("reason")
-        if not isinstance(reason, str) or not reason.strip():
-            reason = "the model did not state a reason"
+        # the model declined. Its free-text reason is NEVER displayed (the
+        # no-model-prose rule covers refusal text too); the displayed
+        # message is a local, neutral template selected by the model's
+        # VALIDATED reason code, with a neutral fallback for a missing or
+        # unknown code.
+        code = reply.get("reason_code")
+        code = code.strip() if isinstance(code, str) else ""
+        if code == "missing_facts":
+            detail = ("the facts needed for this question are not present "
+                      "in the indexed excerpt"
+                      if lang != "ar" else
+                      "الحقائق اللازمة لهذا السؤال غير موجودة في المقتطف "
+                      "المفهرس")
+        elif code == "question_unsupported":
+            detail = ("this question cannot be answered from CAD index "
+                      "facts"
+                      if lang != "ar" else
+                      "لا يمكن الإجابة عن هذا السؤال من حقائق فهرس CAD")
+        else:
+            detail = ("the model could not answer this question from the "
+                      "index facts (no valid reason code given)"
+                      if lang != "ar" else
+                      "لم يتمكن النموذج من الإجابة عن هذا السؤال من حقائق "
+                      "الفهرس (لا رمز سبب صالح)")
+        evidence = dict(evidence_base)
+        evidence.update({
+            "model_reason_code": code or None,
+            "citations_validated": False,
+        })
         return Answer("cannot_answer", intent=intent, question_lang=lang,
-                      detail=reason.strip(), model_called=True,
-                      evidence=dict(evidence_base),
+                      detail=detail, model_called=True,
+                      evidence=evidence,
                       requested_handle=requested,
                       excerpt=_excerpt_only_json(facts) if keep_excerpt else None)
 
@@ -1117,18 +1189,25 @@ def answer_question(idx: "di.DrawingIndex", question: str, client,
     # index values; the model's own wording is never shown (see module
     # docstring step 7)
     try:
-        composed = _compose_answer(intent, lang, facts, records,
-                                   cited_handles, fact_paths,
-                                   records_by_handle_ci, requested)
+        composed, displayed_paths, displayed_handles, cited_only = \
+            _compose_answer(intent, lang, facts, records, cited_handles,
+                            fact_paths, records_by_handle_ci, requested)
     except Exception as exc:  # noqa: BLE001 - composition is local and safe
         return Answer("model_failure", intent=intent, question_lang=lang,
                       detail=f"could not compose the displayed answer from "
-                             f"the cited index values: {exc}",
+                             f"the index facts: {exc}",
                       model_called=True)
     evidence.update({
         "cited_handles": cited_handles,
         "cited_fact_paths": fact_paths,
-        "answer_source": "composed_from_cited_index_values",
+        "displayed_fact_paths": displayed_paths,
+        "displayed_handles": displayed_handles,
+        # cited_only=True: the render used exactly the cited fields
+        # (summary/unmapped). False: deterministic render from the intent's
+        # facts — every rendered field is listed in displayed_fact_paths /
+        # displayed_handles so the correspondence stays checkable.
+        "answer_source": ("composed_from_cited_values" if cited_only
+                          else "deterministic_from_index_facts"),
         "citations_validated": True,
     })
     return Answer("answered", answer_text=composed,
@@ -1195,8 +1274,15 @@ def _print_evidence(answer: Answer) -> None:
           "(validated against the retrieved excerpt)")
     fact_paths = ev.get("cited_fact_paths") or []
     print(f"  cited fact paths:  {', '.join(fact_paths) if fact_paths else '(none)'}")
-    print("  answer source:     composed locally from the cited index values; "
-          "the model's own wording is never displayed")
+    displayed = ev.get("displayed_fact_paths") or []
+    print(f"  displayed fields:  {', '.join(displayed) if displayed else '(none)'} "
+          "(every index field rendered above; correspondence is checkable)")
+    displayed_handles = ev.get("displayed_handles") or []
+    if displayed_handles:
+        print(f"  displayed records: {', '.join(displayed_handles)}")
+    source = ev.get("answer_source")
+    print(f"  answer source:     {source}; the model's own wording (answers "
+          "AND refusal reasons) is never displayed")
 
 
 def _index_consulted_line(answer: Answer) -> None:
