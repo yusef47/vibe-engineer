@@ -33,7 +33,8 @@ Updated: 2026-11-18 (Africa/Cairo)
   demand without storing a key. `patches/ocs-v2026.46-vibe-engineer.patch`
   preserves the source-fork changes against upstream commit `8b4d270`;
   reverse-apply check against the local source HEAD passed. See
-  `tools/ocs/ASSISTANT_SERVICE.md` and `patches/README.md`.
+  `tools/ocs/ASSISTANT_SERVICE.md` and `patches/README.md`. PR #5 is open
+  against `feat/drawing-qa` (PR #4) for review; neither PR is merged.
 - Product direction and execution gates are documented in `PLAN.md`.
 - **Milestone 1 (deterministic CAD integration smoke test) is complete and
   merged to `main` (PR #1).** All 15 steps pass against the real Open CAD
