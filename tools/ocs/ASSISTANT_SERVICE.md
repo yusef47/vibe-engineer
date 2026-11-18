@@ -41,11 +41,12 @@ classifier misses a phrase.
 
 ## Enable OpenRouter later
 
-Set `OPENROUTER_API_KEY` locally and `OPENROUTER_MODEL` to a chosen OpenRouter
-model ID. Existing ignored repo-root `.env` loading is reused. Never put the
-key in a command argument, launcher, tracked file, screenshot, or chat. Restart
-the service after changing these settings. The model must be explicitly set
-when a key is present; no priced model is silently selected.
+Set `OPENROUTER_API_KEY` locally in the ignored repo-root `.env`. The default
+model is the existing QA candidate `z-ai/glm-5.3-flash`; `OPENROUTER_MODEL`
+can override it. Availability and pricing must be checked before real use.
+Never put the key in a command argument, launcher, tracked file, screenshot,
+or chat. Close and reopen the Assistant panel after adding a key so the
+service picks it up. Restart the service if replacing an already loaded key.
 
 One model call per question, maximum 600 output tokens, 30-second HTTP timeout,
 no autonomous tool loop. Only small QA excerpts leave the machine. The

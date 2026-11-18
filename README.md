@@ -10,8 +10,9 @@ The local Windows Vibe Engineer source fork now has a connected right-side
 Assistant panel and a read-only Python bridge to the live drawing through MCP.
 Without an OpenRouter key, `/summary`, `/entity HANDLE`, and `/help` work on
 the active drawing. Supported model questions will use the validated
-OpenRouter QA path after the founder adds a key and an explicit model ID
-locally. CAD edits and structural assessment remain disabled; see
+OpenRouter QA path after the founder adds a key locally. The model defaults
+to the existing QA candidate `z-ai/glm-5.3-flash` and can be overridden.
+CAD edits and structural assessment remain disabled; see
 [the assistant service guide](tools/ocs/ASSISTANT_SERVICE.md). This local GUI
 integration has not been merged or published yet.
 

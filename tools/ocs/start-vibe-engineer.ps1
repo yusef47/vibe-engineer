@@ -1,5 +1,5 @@
 # Start the local Vibe Engineer CAD editor and its on-demand assistant service.
-# Put OPENROUTER_API_KEY and OPENROUTER_MODEL in the ignored repository .env
+# Put OPENROUTER_API_KEY in the ignored repository .env
 # when ready; this launcher never stores or prints credentials.
 $ErrorActionPreference = 'Stop'
 

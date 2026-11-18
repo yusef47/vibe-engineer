@@ -383,16 +383,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=int(os.environ.get("OCS_ASSISTANT_PORT", "8766")))
     parser.add_argument("--ocs-exe", default=os.environ.get("OCS_EXE"))
-    parser.add_argument("--model", default=os.environ.get("OPENROUTER_MODEL", ""))
+    parser.add_argument("--model", default=os.environ.get("OPENROUTER_MODEL") or qa.DEFAULT_MODEL)
     parser.add_argument("--spend-cap-usd", type=float, default=float(os.environ.get("OPENROUTER_SPEND_CAP_USD", "5")))
     args = parser.parse_args(argv)
     if not args.ocs_exe or not Path(args.ocs_exe).is_file():
         parser.error("Set OCS_EXE to the tested CAD executable.")
     if not 1 <= args.port <= 65535 or not math.isfinite(args.spend_cap_usd) or args.spend_cap_usd <= 0:
         parser.error("Use a valid port and a positive finite spend cap.")
-    if os.environ.get("OPENROUTER_API_KEY") and not args.model:
-        parser.error("Set OPENROUTER_MODEL explicitly before enabling paid calls.")
     def client_factory():
+        # Pick up a newly added ignored .env key when the panel reconnects.
+        qa._seed_env_file()
         key = os.environ.get("OPENROUTER_API_KEY")
         if not key:
             return None

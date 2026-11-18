@@ -1,10 +1,11 @@
 """Offline bridge tests: fake MCP/model and real loopback panel protocol."""
 import json
+import os
 import socket
 import threading
 import unittest
 import queue
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import assistant_service as service
 import drawing_qa as qa
@@ -64,6 +65,32 @@ def run(conv, text):
 
 
 class BridgeTests(unittest.TestCase):
+    def test_key_only_default_model_on_panel_reconnect(self):
+        captured = {}
+        class StubServer:
+            def __init__(self, address, mcp_factory, client_factory):
+                captured["factory"] = client_factory
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def serve_forever(self):
+                pass
+        calls = 0
+        def seed_env():
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                os.environ["OPENROUTER_API_KEY"] = "fake-not-a-real-key"
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "", "OPENROUTER_MODEL": ""}), \
+             patch.object(service.qa, "_seed_env_file", side_effect=seed_env), \
+             patch.object(service, "Server", StubServer), \
+             patch.object(service.qa, "OpenRouterClient") as client:
+            self.assertEqual(service.main(["--ocs-exe", service.__file__]), 0)
+            captured["factory"]()
+            self.assertEqual(client.call_args.kwargs["model"], qa.DEFAULT_MODEL)
+            self.assertEqual(client.call_args.kwargs["api_key"], "fake-not-a-real-key")
+
     def test_mcp_facade_cannot_launch_or_mutate(self):
         mcp = service.MCP.__new__(service.MCP)
         mcp.rpc = Mock()

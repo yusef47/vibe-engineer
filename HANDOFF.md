@@ -8,17 +8,21 @@ Updated: 2026-11-18 (Africa/Cairo)
   Vibe Engineer source fork now reconnects its right-side Assistant panel to
   a loopback Python service. The companion repo has
   `tools/ocs/assistant_service.py`, `test_assistant_service.py`, and
-  `ASSISTANT_SERVICE.md` on a local feature branch. The panel displays
+  `ASSISTANT_SERVICE.md` on `feat/live-assistant-bridge`. The panel displays
   conversation, service status, and structured source identity; its Change
   Plan tab honestly remains inactive. The service reads the live GUI via
   the same build's `--mcp`, using only nonlaunching session discovery and
   state/query tools. Without a key it handles `/help`, `/summary`, and
   `/entity HANDLE`; ordinary model questions explain the missing key with
-  zero provider requests. With a local OpenRouter key and an explicitly
-  chosen model, it routes supported read-only questions through the existing
+  zero provider requests. With a local OpenRouter key (the existing QA model
+  candidate is preset, with an optional override), it routes supported read-only questions through the existing
   validated `drawing_qa.py` path. No edit or structural-assessment tool is
   exposed. The local source fork is not pushed to the upstream OCS remote.
-  Verification: 19/19 backend tests and Python compile passed; Rust binary
+  The default QA model is preset to `z-ai/glm-5.3-flash`; only the local key
+  is needed to attempt a real model question, and the panel can pick up a newly
+  added ignored `.env` key on reconnect. Model availability, response, and
+  pricing have not yet been verified with a real provider call.
+  Verification: 20/20 backend tests and Python compile passed; Rust binary
   check/build passed; an actual GUI/MCP/TCP smoke on a blank `Drawing1`
   returned a source-bound `/summary` with zero entities, `api_key:false`,
   and cost 0. An official MCP window capture visually confirmed a clean
