@@ -9,8 +9,9 @@ client enabled; starting this script does not rebuild or replace the GUI.
 
 ## Start without a key
 
-On the founder's Windows checkout, run the private parent-folder launcher
-`start-vibe-engineer.ps1`. It starts the locally built editor with
+On Windows, run `tools/ocs/start-vibe-engineer.ps1` from this repository.
+It expects a sibling `OpenCADStudio-source` checkout built from the pinned
+source patch described in `patches/README.md`, and starts the editor with
 `OCS_ASSISTANT_COMMAND` set; opening the Assistant panel starts this service
 on demand. The launcher contains no credentials.
 

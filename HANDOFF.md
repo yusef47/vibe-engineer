@@ -24,9 +24,12 @@ Updated: 2026-11-18 (Africa/Cairo)
   and cost 0. An official MCP window capture visually confirmed a clean
   green connected status, no-key notice, enabled Send, and the right-side
   Conversation/Sources/Change Plan tabs. A real OpenRouter response is still
-  unverified; the six-entity content check uses fake MCP/model. The private
-  parent-folder `start-vibe-engineer.ps1` starts the local editor and service
-  on demand without storing a key. See `tools/ocs/ASSISTANT_SERVICE.md`.
+  unverified; the six-entity content check uses fake MCP/model. The tracked
+  `tools/ocs/start-vibe-engineer.ps1` starts the local editor and service on
+  demand without storing a key. `patches/ocs-v2026.46-vibe-engineer.patch`
+  preserves the source-fork changes against upstream commit `8b4d270`;
+  reverse-apply check against the local source HEAD passed. See
+  `tools/ocs/ASSISTANT_SERVICE.md` and `patches/README.md`.
 - Product direction and execution gates are documented in `PLAN.md`.
 - **Milestone 1 (deterministic CAD integration smoke test) is complete and
   merged to `main` (PR #1).** All 15 steps pass against the real Open CAD

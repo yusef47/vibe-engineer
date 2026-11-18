@@ -15,6 +15,11 @@ locally. CAD edits and structural assessment remain disabled; see
 [the assistant service guide](tools/ocs/ASSISTANT_SERVICE.md). This local GUI
 integration has not been merged or published yet.
 
+On Windows, build the patched CAD source in a sibling `OpenCADStudio-source`
+folder, then run `powershell -ExecutionPolicy Bypass -File
+tools\ocs\start-vibe-engineer.ps1` from this repository. The source patch and
+reproduction steps are in [patches](patches/README.md).
+
 The first milestone (a deterministic CAD integration smoke test) is merged to
 `main` (PR #1), and the second milestone — a trustworthy read/index layer for
 an existing drawing with provenance and stale-index detection — is merged too

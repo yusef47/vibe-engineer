@@ -1,0 +1,2074 @@
+diff --git a/NOTICE.md b/NOTICE.md
+new file mode 100644
+index 0000000..ded38d2
+--- /dev/null
++++ b/NOTICE.md
+@@ -0,0 +1,24 @@
++# Vibe Engineer fork notice
++
++Vibe Engineer is a modified fork of **Open CAD Studio**.
++
++- Upstream project: <https://github.com/HakanSeven12/OpenCADStudio>
++- Upstream author: Hakan Seven and Open CAD Studio contributors
++- Pinned upstream revision: `8b4d27046040b27eb07d3faed7b7472bd7bdaea9` (v2026.46)
++- License: GNU General Public License v3.0; see [LICENSE](LICENSE)
++
++The CAD engine, drawing formats, command set, undo system, Assistant palette,
++MCP transport/tool names, and internal `ocs_*`/crate identifiers remain upstream
++work. Vibe Engineer adds product branding and a focused desktop Start page:
++
++- New V/E logo mark and themed window/About icon.
++- Rebuilt Start page with Open Drawing, New Drawing, From Template, Settings,
++  and Plugins; removed Discussions, supporters/Patreon, recent documents,
++  tutorial videos, sponsors, Reddit, OCS Web, feedback, and donation links.
++- Removed Start-page-only boot fetches (Patreon, videos, GitHub Discussions,
++  recent-file thumbnails).
++- Branded window title, About screen, Help menu entry, CLI description, and
++  prominent in-app identity strings.
++
++No upstream trademark or authorship is claimed. The upstream project and its
++contributors retain credit for the CAD application this fork builds on.
+diff --git a/assets/logo.svg b/assets/logo.svg
+index 7b4fdc6..692f5b2 100644
+--- a/assets/logo.svg
++++ b/assets/logo.svg
+@@ -1,21 +1,22 @@
+-<svg width="920" height="920" viewBox="0 0 920 920" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<g clip-path="url(#clip0_12_11)">
+-<rect width="920" height="920" fill="#1C2430"/>
+-<path d="M166.001 472.8C149.001 468.7 133.301 455.5 125.001 438.4C118.801 425.7 119.001 428.6 119.001 336.7V252.7L121.801 244.4C129.001 223.7 147.401 207 168.001 202.7C173.301 201.6 182.601 201.2 205.801 201.2H236.501L236.301 228L236.001 254.7L211.001 255.2C183.801 255.7 182.901 255.9 177.301 261.9C171.301 268.1 171.501 266.1 171.501 337.3C171.501 383.2 171.801 403.6 172.601 406.3C174.201 411.5 179.001 417.1 183.901 419.3C187.501 420.9 190.801 421.2 212.201 421.2C225.501 421.2 236.501 421.5 236.701 422C236.901 422.4 236.901 434.3 236.701 448.5L236.301 474.2L203.701 474.1C181.601 474.1 169.401 473.6 166.001 472.8Z" fill="#327DE8"/>
+-<path d="M250.501 473.8C250.101 473.4 250.001 458.8 250.401 428.5L250.501 421.2H274.501C300.701 421.2 303.201 420.8 308.801 415.4C310.401 413.9 312.701 410.9 313.801 408.7C316.001 404.7 316.001 404.4 316.001 338.2V271.7L313.801 267.5C312.501 265.2 310.301 262.1 308.801 260.6C303.401 255.5 301.501 255.2 275.001 255.2H250.501V228.1V201L284.301 201.4C315.601 201.8 318.501 202 324.501 204C343.501 210.3 359.801 226.8 365.801 245.7C368.001 252.7 368.001 252.8 368.001 338.2V423.7L365.301 431C358.301 450 345.101 463.7 327.001 470.9L320.001 473.7L285.501 474C266.501 474.2 250.701 474.1 250.501 473.8Z" fill="#327DE8"/>
+-<path d="M631.575 473C631.275 472.2 631.175 460.9 631.275 447.7L631.575 423.7L693.075 423.2C762.275 422.6 758.575 423.1 765.675 414.9C770.475 409.2 771.275 405.6 770.875 391.1C770.575 379.4 770.375 378.3 767.875 374.4C766.375 372.2 762.975 369 760.375 367.5L755.575 364.7L719.075 364.1C690.575 363.6 681.075 363.1 675.775 361.8C652.475 356.3 632.975 337 627.575 314C625.475 305 625.475 261.1 627.575 252.7C632.875 231.7 647.675 215.5 668.875 207.4L675.575 204.8L741.575 204.2C789.775 203.8 807.875 204 808.575 204.8C809.175 205.5 809.575 215.3 809.475 230.3L809.375 254.7L751.475 255.2L693.575 255.7L689.875 258C684.775 261.2 680.375 266.5 679.175 270.9C678.575 273 678.075 279.2 678.075 284.7C678.075 296.1 679.675 300.6 685.175 305.9C691.675 312.1 692.575 312.2 729.275 312.2C753.275 312.3 764.775 312.7 770.375 313.7C790.575 317.3 810.275 332.7 818.475 351.3C823.075 361.8 824.075 369.3 824.075 393.4C824.075 419.2 823.075 425.6 817.275 437.7C809.475 453.9 796.175 465.4 778.075 471.5C771.675 473.7 770.775 473.7 701.775 474C645.075 474.2 631.975 474 631.575 473Z" fill="#F7F7F8"/>
+-<path d="M450.3 472.1C439 469.1 429.7 463.7 421 455.1C412 446.2 407.2 437.9 403.6 425.6L401 416.5L401.3 336.1C401.7 256.8 401.7 255.5 403.8 249.3C410.3 230 425.1 214.9 444.9 207.2L451.6 204.6L522.4 204.3L593.1 204V229.6V255.1H533.4C497 255.1 472.2 255.5 470 256.1C465.2 257.4 458.2 263.6 456 268.5C454.3 272.4 454.1 276.6 454.1 339.1C454.1 401.6 454.3 405.8 456 409.7C458.3 414.6 464.8 420.4 470 421.9C472.7 422.8 491.1 423.1 533.5 423.1H593.1V448.6V474.1L525.4 474C462 474 457.1 473.9 450.3 472.1Z" fill="#F7F7F8"/>
+-<rect x="672" y="517" width="12" height="81" fill="white"/>
+-<rect x="672" y="691" width="12" height="81" fill="white"/>
+-<rect x="725.5" y="650" width="12" height="93" transform="rotate(-90 725.5 650)" fill="white"/>
+-<rect x="537.5" y="650" width="12" height="93" transform="rotate(-90 537.5 650)" fill="white"/>
+-<rect x="649" y="616" width="58" height="57" stroke="#337CE5" stroke-width="18"/>
+-<rect x="-193" y="1079.79" width="377.615" height="972" transform="rotate(-77.5907 -193 1079.79)" fill="#141D26"/>
+-<rect x="-450" y="699.014" width="377.615" height="972" transform="rotate(-45 -450 699.014)" fill="#327DE8"/>
+-</g>
+-<defs>
+-<clipPath id="clip0_12_11">
+-<rect width="920" height="920" fill="white"/>
+-</clipPath>
+-</defs>
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
++  <defs>
++    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="1">
++      <stop offset="0" stop-color="#1f3a5f"/>
++      <stop offset="1" stop-color="#2f6fb0"/>
++    </linearGradient>
++    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
++      <stop offset="0" stop-color="#c7a14a"/>
++      <stop offset="1" stop-color="#e4c276"/>
++    </linearGradient>
++  </defs>
++
++  <g transform="translate(-40 -20)">
++    <rect x="100" y="100" width="40" height="118" rx="5" fill="url(#beam)"/>
++    <rect x="140" y="100" width="40" height="118" rx="5" fill="url(#beam)"/>
++    <rect x="180" y="100" width="40" height="118" rx="5" fill="url(#beam)"/>
++
++    <rect x="118" y="60" width="84" height="50" rx="6" fill="url(#mark)"/>
++    <rect x="128" y="74" width="64" height="6" fill="#1f3a5f"/>
++    <rect x="128" y="86" width="48" height="5" fill="#1f3a5f" opacity="0.6"/>
++  </g>
+ </svg>
+diff --git a/docs/assistant-panel.md b/docs/assistant-panel.md
+index 7562487..ef8b523 100644
+--- a/docs/assistant-panel.md
++++ b/docs/assistant-panel.md
+@@ -1,5 +1,21 @@
+ # Assistant panel
+ 
++## Vibe Engineer panel
++
++Open a drawing, then choose **View ▸ Palettes ▸ Assistant** or run `ASSISTANT`.
++The panel opens on the right at 380 px and can be resized, collapsed, and
++closed. It connects only to a service on loopback (`127.0.0.1`). Conversation,
++Sources, and Change Plan remain separate sections. After a supported query,
++Sources displays the service-reported session/document/revision, drawing path,
++and available element handles or fact paths, alongside the current selection
++count.
++
++The current local service is read-only. With no OpenRouter key, `/summary`,
++`/entity HANDLE`, and `/help` still work; model questions return a no-key
++message without a provider request. The panel enables Send only after the
++service reports a connected CAD bridge. The service has no mutating CAD tools,
++so it cannot edit the drawing. Structural assessment is also disabled.
++
+ `ASSISTANT` (alias `AI`, or **View ▸ Palettes ▸ Assistant**) opens a dockable
+ chat pallet for an AI agent that drives the open drawing. The pallet is only
+ the user interface: the agent itself is an external service running on the
+@@ -17,12 +33,14 @@ What the user sees:
+   with the drawing, the model, the tool count and the running cost the
+   service reports.
+ 
+-Every change the agent makes goes through the normal command and undo paths,
+-so Ctrl+Z undoes it like any other edit.
++The current service uses only read tools. Requests cannot change the drawing,
++so there are no edit steps to undo from this panel.
+ 
+ ## Connecting a service
+ 
+-The pallet connects to `127.0.0.1:8766` (`OCS_ASSISTANT_PORT` changes it).
++The pallet connects to `127.0.0.1:8766` (`OCS_ASSISTANT_PORT` changes it) when
++opened. The service-reported `api_key` status controls the no-key notice; the
++key itself is never sent to or read by the CAD UI.
+ 
+ If nothing is listening when the pallet opens and `OCS_ASSISTANT_COMMAND` is
+ set, OCS starts that command hidden and keeps retrying for up to 40 seconds:
+diff --git a/src/app/assistant.rs b/src/app/assistant.rs
+index cd35f48..805f2ba 100644
+--- a/src/app/assistant.rs
++++ b/src/app/assistant.rs
+@@ -14,7 +14,17 @@ impl OpenCADStudio {
+         width: f32,
+         chrome: crate::ui::dock::Chrome,
+     ) -> Element<'a, Message> {
+-        crate::ui::window::assistant::view(&self.assistant, &self.active_theme, width, chrome)
++        let selected_count = self.tabs[self.active_tab]
++            .scene
++            .selected_handles_in_order()
++            .len();
++        crate::ui::window::assistant::view(
++            &self.assistant,
++            &self.active_theme,
++            width,
++            chrome,
++            selected_count,
++        )
+     }
+ 
+     pub(in crate::app) fn on_assistant(&mut self, msg: AssistantMsg) -> Task<Message> {
+diff --git a/src/app/dock/update.rs b/src/app/dock/update.rs
+index cbe7366..4332cb3 100644
+--- a/src/app/dock/update.rs
++++ b/src/app/dock/update.rs
+@@ -741,7 +741,7 @@ impl OpenCADStudio {
+             }
+             PanelId::Laywalk => self.close_layer_walk(false),
+             PanelId::QuickCalc => self.quick_calc.show = false,
+-            PanelId::Assistant => self.assistant.show = false,
++            PanelId::Assistant => self.assistant.closed(),
+             PanelId::CommandHistory => {
+                 self.show_command_history = false;
+                 self.save_config();
+diff --git a/src/app/mod.rs b/src/app/mod.rs
+index c10f30e..d98ade7 100644
+--- a/src/app/mod.rs
++++ b/src/app/mod.rs
+@@ -7387,73 +7387,13 @@ impl OpenCADStudio {
+         if !has_script {
+             s.queue_startup_prompts();
+         }
+-        // Fetch the Patreon supporters list once at boot for the Start page.
+-        #[cfg(not(target_arch = "wasm32"))]
+-        let patrons_fetch = Task::perform(
+-            async { crate::patreon::fetch_patrons() },
+-            Message::PatronsFetched,
+-        );
+-        #[cfg(target_arch = "wasm32")]
+-        let patrons_fetch = Task::none();
+-        // Tutorial videos: show the on-disk cache instantly, refresh from the
+-        // live playlist in the background. Nothing ships in the binary. The
+-        // fetch runs on its own OS thread — its several sequential HTTP
+-        // requests would otherwise sit on the async executor and hold up the
+-        // rest of the boot tasks (the Start page waited on it).
+-        #[cfg(not(target_arch = "wasm32"))]
+-        let videos_fetch = {
+-            s.set_videos(crate::videos::load_cached());
+-            s.videos_loading = true;
+-            let (tx, rx) = iced::futures::channel::oneshot::channel();
+-            std::thread::spawn(move || {
+-                let _ = tx.send(crate::videos::fetch_playlist());
+-            });
+-            Task::perform(
+-                async move {
+-                    rx.await
+-                        .unwrap_or_else(|_| Err("video fetch thread died".into()))
+-                },
+-                Message::VideosFetched,
+-            )
+-        };
+-        #[cfg(target_arch = "wasm32")]
+-        let videos_fetch = Task::none();
+-        // GitHub Discussions: seed from the last successful fetch, then refresh
+-        // the public feed and pinned section on a background thread.
+-        #[cfg(not(target_arch = "wasm32"))]
+-        let discussions_fetch = {
+-            s.discussions = crate::discussions::load_cached();
+-            s.discussions_loading = true;
+-            let (tx, rx) = iced::futures::channel::oneshot::channel();
+-            std::thread::spawn(move || {
+-                let _ = tx.send(crate::discussions::fetch_discussions());
+-            });
+-            Task::perform(
+-                async move {
+-                    rx.await
+-                        .unwrap_or_else(|_| Err("discussion fetch thread died".into()))
+-                },
+-                Message::DiscussionsFetched,
+-            )
+-        };
+-        #[cfg(target_arch = "wasm32")]
+-        let discussions_fetch = Task::none();
+-        // Recent-file thumbnails: decoded off-thread — parsing every recent
+-        // DWG's preview on the boot path held the first frame back.
+-        let thumbs_fetch = s.refresh_recent_thumbs();
++        // The Start page no longer shows Patreon supporters, tutorial videos,
++        // GitHub discussions or recent-file thumbnails, so none of those
++        // network or disk fetches run at boot. Their message handlers and the
++        // panels themselves are still in the app for the rails that remain.
+         (
+             s,
+-            Task::batch([
+-                open_main,
+-                check_update,
+-                focus_cmd,
+-                cli_open,
+-                script,
+-                patrons_fetch,
+-                videos_fetch,
+-                discussions_fetch,
+-                thumbs_fetch,
+-            ]),
++            Task::batch([open_main, check_update, focus_cmd, cli_open, script]),
+         )
+     }
+ 
+@@ -7491,21 +7431,9 @@ impl OpenCADStudio {
+             Task::done(Message::PollWebFonts),
+             Task::done(Message::ApplyWebFont(primary_font)),
+         ]);
+-        // Web can't reach the Patreon API directly (CORS); fetch the CI-built
+-        // supporters.json served on the same origin instead.
+-        let patrons = Task::perform(crate::patreon::fetch_patrons_web(), Message::PatronsFetched);
+-        s.videos_loading = true;
+-        let videos = Task::perform(crate::videos::fetch_playlist_web(), Message::VideosFetched);
+-        s.discussions_loading = true;
+-        let discussions = Task::perform(
+-            crate::discussions::fetch_discussions_web(),
+-            Message::DiscussionsFetched,
+-        );
+-        let thumbs_fetch = if embed_mode {
+-            Task::none()
+-        } else {
+-            s.refresh_recent_thumbs()
+-        };
++        // As on the desktop, the boot fetches that only fed the removed Start
++        // page rails (supporters, tutorial videos, discussions, recent-file
++        // thumbnails) no longer run.
+         // Crash-recovery scan: OPFS snapshots newer than a drawing's last
+         // saved copy come back as a restore prompt (stale ones are deleted).
+         let autosave_scan = if embed_mode {
+@@ -7560,19 +7488,7 @@ impl OpenCADStudio {
+                 crate::io::web_link::ParsedLink::Absent => Task::none(),
+             }
+         };
+-        (
+-            s,
+-            Task::batch([
+-                focus,
+-                fonts,
+-                patrons,
+-                videos,
+-                discussions,
+-                thumbs_fetch,
+-                autosave_scan,
+-                deep_link,
+-            ]),
+-        )
++        (s, Task::batch([focus, fonts, autosave_scan, deep_link]))
+     }
+ }
+ 
+@@ -7612,13 +7528,13 @@ pub fn run() -> iced::Result {
+             let dot = if tab.dirty { "● " } else { "" };
+             let name = tab.tab_display_name();
+             format!(
+-                "{}Open CAD Studio {} - {}",
++                "{}Vibe Engineer {} - {}",
+                 dot,
+                 env!("OCS_APP_VERSION"),
+                 name
+             )
+         } else {
+-            concat!("Open CAD Studio ", env!("OCS_APP_VERSION")).to_string()
++            concat!("Vibe Engineer ", env!("OCS_APP_VERSION")).to_string()
+         }
+     })
+     .theme(|state: &OpenCADStudio, _| state.active_theme.clone())
+@@ -7665,9 +7581,7 @@ pub fn run_web() -> iced::Result {
+         OpenCADStudio::view_main,
+     )
+     .subscription(OpenCADStudio::subscription)
+-    .title(|_state: &OpenCADStudio| {
+-        concat!("Open CAD Studio ", env!("OCS_APP_VERSION")).to_string()
+-    })
++    .title(|_state: &OpenCADStudio| concat!("Vibe Engineer ", env!("OCS_APP_VERSION")).to_string())
+     .theme(|state: &OpenCADStudio| state.active_theme.clone())
+     .backend(iced::Backend::Hardware(iced::backend::Api::OpenGL))
+     // No MSAA for canvas geometry: WebGL resolves the multisampled target with
+diff --git a/src/app/view/mod.rs b/src/app/view/mod.rs
+index 16d3507..8f8de16 100644
+--- a/src/app/view/mod.rs
++++ b/src/app/view/mod.rs
+@@ -882,22 +882,7 @@ impl OpenCADStudio {
+             })
+             .into()
+         } else if tab.is_start {
+-            start_page_view(
+-                &self.patrons,
+-                &self.videos,
+-                self.videos_loading,
+-                &self.video_thumbs,
+-                &self.discussions,
+-                self.discussions_loading,
+-                &self.recent_files,
+-                &self.recent_thumbs,
+-                self.recent_limit,
+-                &self.recent_limit_input,
+-                self.recent_view,
+-                self.start_action_w.clone(),
+-                self.start_section,
+-                self.start_templates.as_deref(),
+-            )
++            start_page_view(self.start_action_w.clone(), self.start_templates.as_deref())
+         } else if is_paper {
+             shader(ViewportPane::model(
+                 &tab.scene,
+@@ -1239,10 +1224,15 @@ bg={bg_ms:.1}ms n={view_count}"
+                         .collect();
+                     // A single selected MTEXT shows its actual text-box frame,
+                     // with the same insertion, width and rotation as its grips.
+-                    if let Some(handle) = tab.selected_grip_handles.first().copied().filter(|h| {
+-                        tab.selected_grip_handles.iter().all(|owner| owner == h)
+-                    }) {
+-                        if let Some(document::EntityType::MText(mt)) = tab.scene.document.get_entity(handle) {
++                    if let Some(handle) = tab
++                        .selected_grip_handles
++                        .first()
++                        .copied()
++                        .filter(|h| tab.selected_grip_handles.iter().all(|owner| owner == h))
++                    {
++                        if let Some(document::EntityType::MText(mt)) =
++                            tab.scene.document.get_entity(handle)
++                        {
+                             // Layout is independent of the camera. Reuse it while the
+                             // document revision and selected entity stay unchanged.
+                             thread_local! {
+@@ -1255,26 +1245,45 @@ bg={bg_ms:.1}ms n={view_count}"
+                                         return bounds;
+                                     }
+                                 }
+-                                let bounds = crate::entities::mtext::layout_of(mt, &tab.scene.document, false).local_bounds;
++                                let bounds = crate::entities::mtext::layout_of(
++                                    mt,
++                                    &tab.scene.document,
++                                    false,
++                                )
++                                .local_bounds;
+                                 *cache.borrow_mut() = Some((key.0, key.1, key.2, bounds));
+                                 bounds
+                             });
+                             let h = mt.height.abs().max(1e-9);
+-                            let width = if mt.column_data.column_type != 0 && mt.column_data.column_count > 1 && mt.column_data.width > 0.0 {
+-                                mt.column_data.width * f64::from(mt.column_data.column_count) + mt.column_data.gutter * f64::from(mt.column_data.column_count - 1)
+-                            } else { mt.rectangle_width.max(0.0) };
++                            let width = if mt.column_data.column_type != 0
++                                && mt.column_data.column_count > 1
++                                && mt.column_data.width > 0.0
++                            {
++                                mt.column_data.width * f64::from(mt.column_data.column_count)
++                                    + mt.column_data.gutter
++                                        * f64::from(mt.column_data.column_count - 1)
++                            } else {
++                                mt.rectangle_width.max(0.0)
++                            };
+                             use document::entities::AttachmentPoint as A;
+                             let anchor = match mt.attachment_point {
+                                 A::TopCenter | A::MiddleCenter | A::BottomCenter => 0.5,
+                                 A::TopRight | A::MiddleRight | A::BottomRight => 1.0,
+                                 _ => 0.0,
+                             };
+-                            let width = width.max(if b[0] <= b[2] { f64::from(b[2] - b[0]) } else { h });
++                            let width = width.max(if b[0] <= b[2] {
++                                f64::from(b[2] - b[0])
++                            } else {
++                                h
++                            });
+                             let left = -anchor * width;
+                             let (mut bottom, mut top) = if b[1] <= b[3] {
+                                 (f64::from(b[1]).min(0.0), f64::from(b[3]).max(0.0))
+-                            } else { (-h, 0.0) };
+-                            if let Some(height) = mt.rectangle_height.filter(|height| *height > 0.0) {
++                            } else {
++                                (-h, 0.0)
++                            };
++                            if let Some(height) = mt.rectangle_height.filter(|height| *height > 0.0)
++                            {
+                                 let vertical = match mt.attachment_point {
+                                     A::MiddleLeft | A::MiddleCenter | A::MiddleRight => 0.5,
+                                     A::BottomLeft | A::BottomCenter | A::BottomRight => 1.0,
+@@ -1284,11 +1293,31 @@ bg={bg_ms:.1}ms n={view_count}"
+                                 top = top.max(vertical * height);
+                             }
+                             let (sin, cos) = mt.rotation.sin_cos();
+-                            let base = glam::DVec3::new(mt.insertion_point.x, mt.insertion_point.y, mt.insertion_point.z);
+-                            let corners: Vec<_> = [(left, top), (left + width, top), (left + width, bottom), (left, bottom)]
+-                                .into_iter().map(|(x,y)| crate::entities::common::square_grip(0,
+-                                    base + glam::DVec3::new(x * cos - y * sin, x * sin + y * cos, 0.0))).collect();
+-                            let projected: Vec<_> = project(&corners).into_iter().map(|g| g.1).collect();
++                            let base = glam::DVec3::new(
++                                mt.insertion_point.x,
++                                mt.insertion_point.y,
++                                mt.insertion_point.z,
++                            );
++                            let corners: Vec<_> = [
++                                (left, top),
++                                (left + width, top),
++                                (left + width, bottom),
++                                (left, bottom),
++                            ]
++                            .into_iter()
++                            .map(|(x, y)| {
++                                crate::entities::common::square_grip(
++                                    0,
++                                    base + glam::DVec3::new(
++                                        x * cos - y * sin,
++                                        x * sin + y * cos,
++                                        0.0,
++                                    ),
++                                )
++                            })
++                            .collect();
++                            let projected: Vec<_> =
++                                project(&corners).into_iter().map(|g| g.1).collect();
+                             if projected.len() == 4 {
+                                 boxes.push(projected);
+                             }
+@@ -2361,8 +2390,13 @@ bg={bg_ms:.1}ms n={view_count}"
+                 .unwrap_or_default();
+             // Dynamic input shows only the current prompt, not preceding
+             // informational lines that also belong in command-line history.
+-            prompt = prompt.lines().rev().find(|line| !line.trim().is_empty())
+-                .unwrap_or("").trim().to_owned();
++            prompt = prompt
++                .lines()
++                .rev()
++                .find(|line| !line.trim().is_empty())
++                .unwrap_or("")
++                .trim()
++                .to_owned();
+             // The command line is hidden: what is typed shows here.
+             if self.command_line_hidden && !self.command_line.input.is_empty() {
+                 prompt = format!("{prompt} {}", self.command_line.input);
+@@ -3272,8 +3306,13 @@ bg={bg_ms:.1}ms n={view_count}"
+                             .map(|b| b.ymin)
+                             .fold(-ed.height_value() as f32 * 1.8, f32::min)
+                             - padding;
+-                        let fixed_height = ed.rect_height.trim().parse::<f32>().unwrap_or(0.0).max(0.0);
+-                        let bottom = if fixed_height > 0.0 { bottom.min(top - fixed_height) } else { bottom };
++                        let fixed_height =
++                            ed.rect_height.trim().parse::<f32>().unwrap_or(0.0).max(0.0);
++                        let bottom = if fixed_height > 0.0 {
++                            bottom.min(top - fixed_height)
++                        } else {
++                            bottom
++                        };
+                         let growth = ed.box_growth();
+                         let left = if growth == 2.0 {
+                             -width * 0.5
+@@ -4052,9 +4091,8 @@ impl OpenCADStudio {
+         };
+         // Drain the Assistant's connection while it is open or working.
+         let assistant_poll = match self.assistant.poll_interval() {
+-            Some(every) => iced::time::every(every).map(|_| {
+-                Message::Assistant(crate::ui::window::assistant::AssistantMsg::Poll)
+-            }),
++            Some(every) => iced::time::every(every)
++                .map(|_| Message::Assistant(crate::ui::window::assistant::AssistantMsg::Poll)),
+             None => Subscription::none(),
+         };
+         // Blink the MText preview caret while the editor is open.
+@@ -4101,8 +4139,7 @@ impl OpenCADStudio {
+             } else {
+                 std::time::Duration::from_millis(100)
+             };
+-            iced::time::every(interval)
+-                .map(|_| Message::DrainPluginRequests)
++            iced::time::every(interval).map(|_| Message::DrainPluginRequests)
+         } else {
+             Subscription::none()
+         };
+@@ -4401,7 +4438,6 @@ fn doc_tab_layout_items(
+         .collect()
+ }
+ 
+-
+ /// A flat square button of the tab bar (+, ☰, a tab's ×): lit by
+ /// `chrome::hover` while hovered.
+ fn tab_bar_button_style(theme: &Theme, status: button::Status) -> button::Style {
+@@ -4673,69 +4709,40 @@ fn start_action_shape(mut style: button::Style) -> button::Style {
+ }
+ 
+ pub(super) fn start_page_view<'a>(
+-    patrons: &'a [(String, i64)],
+-    videos: &'a [crate::videos::VideoEntry],
+-    videos_loading: bool,
+-    video_thumbs: &'a std::collections::HashMap<String, iced::widget::image::Handle>,
+-    discussions: &'a [crate::discussions::DiscussionEntry],
+-    discussions_loading: bool,
+-    recents: &'a [std::path::PathBuf],
+-    thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
+-    recent_limit: usize,
+-    recent_limit_input: &'a str,
+-    recent_view: super::RecentView,
+     action_width_out: std::sync::Arc<std::sync::atomic::AtomicU32>,
+-    active: super::StartSection,
+     templates: Option<&'a [std::path::PathBuf]>,
+ ) -> Element<'a, Message> {
+     responsive(move |size| {
+-        start_page_content(
+-            patrons,
+-            videos,
+-            videos_loading,
+-            video_thumbs,
+-            discussions,
+-            discussions_loading,
+-            recents,
+-            thumbs,
+-            recent_limit,
+-            recent_limit_input,
+-            recent_view,
+-            size.width,
+-            action_width_out.clone(),
+-            active,
+-            templates,
+-        )
++        let _ = size;
++        start_page_content(action_width_out.clone(), templates)
+     })
+     .into()
+ }
+ 
++/// The Vibe Engineer start page: the product identity and the actions that get
++/// a drawing open. Every promotional rail of the upstream page (recent
++/// documents, tutorials, GitHub discussions, supporters, sponsors, donation,
++/// Reddit, OCS Web, send-feedback) is gone. The file machinery those rails
++/// pointed at is untouched: recent files and thumbnails remain in the app,
++/// while the Start-page-only startup fetches are disabled.
+ fn start_page_content<'a>(
+-    patrons: &'a [(String, i64)],
+-    videos: &'a [crate::videos::VideoEntry],
+-    videos_loading: bool,
+-    video_thumbs: &'a std::collections::HashMap<String, iced::widget::image::Handle>,
+-    discussions: &'a [crate::discussions::DiscussionEntry],
+-    discussions_loading: bool,
+-    recents: &'a [std::path::PathBuf],
+-    thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
+-    recent_limit: usize,
+-    recent_limit_input: &'a str,
+-    recent_view: super::RecentView,
+-    avail_w: f32,
+     action_width_out: std::sync::Arc<std::sync::atomic::AtomicU32>,
+-    active: super::StartSection,
+     templates: Option<&'a [std::path::PathBuf]>,
+ ) -> Element<'a, Message> {
+-    let headline = text("Open CAD Studio")
+-        .size(crate::ui::style::start_metrics::HEADLINE)
++    use crate::ui::style::start_metrics as sm;
++
++    let headline = text("Vibe Engineer")
++        .size(sm::HEADLINE)
+         .style(start_primary_style);
++    let tagline = text("Engineering assistant for CAD drawings")
++        .size(crate::ui::style::text::UI_TITLE)
++        .style(start_muted_style);
+ 
+-    // Plain outlined button (Open / New / Help / Contribute).
++    // Plain outlined button (New / Open / Options / Plugins / Help).
+     let outline_btn = |label: String, msg: Message| {
+-        button(text(label).size(crate::ui::style::start_metrics::ACTION_TEXT))
++        button(text(label).size(sm::ACTION_TEXT))
+             .on_press(msg)
+-            .padding(crate::ui::style::start_metrics::ACTION_PAD)
++            .padding(sm::ACTION_PAD)
+             .style(move |theme: &Theme, status| {
+                 let pair = match status {
+                     button::Status::Hovered => iced::theme::palette::Pair::new(
+@@ -4760,25 +4767,6 @@ fn start_page_content<'a>(
+             })
+     };
+ 
+-    // Donate — the prominent call-to-action, using the theme's danger role.
+-    let donate_btn = {
+-        button(
+-            row![
+-                crate::ui::icons::themed_danger_text(crate::ui::icons::HEART, 14.0),
+-                text(crate::tr!("start", "donate"))
+-                    .size(crate::ui::style::start_metrics::ACTION_TEXT),
+-            ]
+-            .spacing(5)
+-            .align_y(iced::Center),
+-        )
+-        .on_press(Message::RibbonToolClick {
+-            tool_id: "DONATE".to_string(),
+-            event: crate::modules::ModuleEvent::Command("DONATE".to_string()),
+-        })
+-        .padding(crate::ui::style::start_metrics::ACTION_PAD)
+-        .style(|theme: &Theme, status| start_action_shape(button::danger(theme, status)))
+-    };
+-
+     let primary_row = WrapFlow::new(vec![
+         outline_btn(crate::tr!("start", "new-drawing"), Message::TabNew).into(),
+         // The templates beside the default one, then Browse (NEW asks for a
+@@ -4800,7 +4788,7 @@ fn start_page_content<'a>(
+                             button(text(name).size(crate::ui::style::text::UI_TITLE))
+                                 .on_press(Message::NewFromTemplate(Some(path.clone())))
+                                 .style(crate::ui::kit::dropdown_row_style)
+-                                .padding(crate::ui::style::start_metrics::ROW_PAD)
++                                .padding(sm::ROW_PAD)
+                                 .width(Fill),
+                         );
+                     }
+@@ -4811,20 +4799,16 @@ fn start_page_content<'a>(
+                                 event: crate::modules::ModuleEvent::Command("NEW".to_string()),
+                             })
+                             .style(crate::ui::kit::dropdown_row_style)
+-                            .padding(crate::ui::style::start_metrics::ROW_PAD)
++                            .padding(sm::ROW_PAD)
+                             .width(Fill),
+                     );
+-                    let height = ((templates.len() + 1) as f32
+-                        * crate::ui::style::start_metrics::TEMPLATE_ROW_H)
+-                        .min(360.0);
++                    let height = ((templates.len() + 1) as f32 * sm::TEMPLATE_ROW_H).min(360.0);
+                     let popup = container(scrollable(list).height(height))
+                         .style(crate::ui::kit::menu::frame_style)
+                         .padding(2);
+                     crate::ui::drop_down_fit::drop_down_fit(
+                         iced_aw::DropDown::new(head, popup, true)
+-                            .width(iced::Length::Fixed(
+-                                crate::ui::style::start_metrics::TEMPLATE_LIST_W,
+-                            ))
++                            .width(iced::Length::Fixed(sm::TEMPLATE_LIST_W))
+                             .alignment(iced_aw::drop_down::Alignment::Bottom)
+                             .offset(2.0)
+                             .on_dismiss(Message::StartTemplates(false)),
+@@ -4834,656 +4818,69 @@ fn start_page_content<'a>(
+             }
+         },
+         outline_btn(crate::tr!("start", "open-file"), Message::OpenFile).into(),
+-        donate_btn.into(),
+     ])
+-    .spacing_x(crate::ui::style::start_metrics::ACTION_GAP)
++    .spacing_x(sm::ACTION_GAP)
+     .row_h(48.0)
+     .report_natural_width(action_width_out.clone());
+ 
+-    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+-    let mut secondary_items: Vec<Element<'a, Message>> = vec![
++    // Options and Plugins keep their settings/manager entry points; Help still
++    // opens the command help the ribbon offers.
++    let secondary_row = WrapFlow::new(vec![
++        outline_btn(crate::tr!("action", "options"), Message::OptionsOpen).into(),
++        outline_btn(crate::tr!("action", "plugins"), Message::PluginManagerOpen).into(),
+         outline_btn(
+-            crate::tr!("start", "send-feedback"),
++            "Help".to_string(),
+             Message::RibbonToolClick {
+-                tool_id: "REPORT".to_string(),
+-                event: crate::modules::ModuleEvent::Command("REPORT".to_string()),
++                tool_id: "HELP".to_string(),
++                event: crate::modules::ModuleEvent::Command("HELP".to_string()),
+             },
+         )
+         .into(),
+-        outline_btn(crate::tr!("action", "options"), Message::OptionsOpen).into(),
+-    ];
+-    secondary_items
+-        .push(outline_btn(crate::tr!("action", "plugins"), Message::PluginManagerOpen).into());
+-    // The web build is already in the browser, so only the desktop offers a
+-    // link to the web version.
+-    #[cfg(not(target_arch = "wasm32"))]
+-    {
+-        // Filled with the active theme's primary colour.
+-        secondary_items.push(
+-            button(text(crate::t!("OCS Web")).size(crate::ui::style::start_metrics::ACTION_TEXT))
+-                .on_press(Message::RibbonToolClick {
+-                    tool_id: "WEBVERSION".to_string(),
+-                    event: crate::modules::ModuleEvent::Command("WEBVERSION".to_string()),
+-                })
+-                .padding(crate::ui::style::start_metrics::ACTION_PAD)
+-                .style(|theme: &Theme, status| start_action_shape(button::primary(theme, status)))
+-                .into(),
+-        );
+-    }
+-    #[cfg(target_arch = "wasm32")]
+-    secondary_items.push(
+-        button(text(crate::t!("OCS Desktop")).size(crate::ui::style::start_metrics::ACTION_TEXT))
+-            .on_press(Message::OpenUrl(
+-                "https://github.com/HakanSeven12/OpenCADStudio/releases/latest".to_string(),
+-            ))
+-            .padding(crate::ui::style::start_metrics::ACTION_PAD)
+-            .style(|theme: &Theme, status| start_action_shape(button::primary(theme, status)))
+-            .into(),
+-    );
+-    let secondary_row = WrapFlow::new(secondary_items)
+-        .spacing_x(crate::ui::style::start_metrics::ACTION_GAP)
+-        .row_h(44.0)
+-        .report_natural_width(action_width_out.clone());
++    ])
++    .spacing_x(sm::ACTION_GAP)
++    .row_h(44.0)
++    .report_natural_width(action_width_out.clone());
+ 
+-    let reddit_btn = button(
+-        row![
+-            iced::widget::svg(iced::widget::svg::Handle::from_memory(include_bytes!(
+-                "../../../assets/icons/reddit.svg"
+-            )))
+-            .width(crate::ui::style::start_metrics::ACTION_ICON)
+-            .height(crate::ui::style::start_metrics::ACTION_ICON),
+-            text("r/OpenCADStudio").size(crate::ui::style::start_metrics::ACTION_TEXT),
+-        ]
+-        .spacing(7)
+-        .align_y(iced::Center),
+-    )
+-    .on_press(Message::OpenUrl(
+-        "https://www.reddit.com/r/OpenCADStudio/".to_string(),
++    // Visible provenance: this is a GPL-3.0 fork of Open CAD Studio, and the
++    // About dialog plus NOTICE.md carry the full attribution.
++    let footer = text(format!(
++        "Vibe Engineer {}  ·  based on Open CAD Studio  ·  GPL-3.0",
++        env!("OCS_FULL_VERSION")
+     ))
+-    .padding(crate::ui::style::start_metrics::ACTION_PAD)
+-    .style(|theme: &Theme, status| {
+-        let pair = match status {
+-            button::Status::Hovered => iced::theme::palette::Pair::new(
+-                crate::ui::style::chrome::hover(theme),
+-                crate::ui::style::chrome::strong(theme),
+-            ),
+-            _ => iced::theme::palette::Pair::new(
+-                crate::ui::style::chrome::panel(theme),
+-                crate::ui::style::chrome::text(theme),
+-            ),
+-        };
+-        start_action_shape(button::Style {
+-            background: Some(Background::Color(pair.color)),
+-            text_color: pair.text,
+-            border: Border {
+-                color: Color::from_rgb8(255, 69, 0),
+-                width: crate::ui::style::kit_metrics::line(),
+-                ..Default::default()
+-            },
+-            ..Default::default()
+-        })
+-    });
++    .size(crate::ui::style::text::UI_SMALL)
++    .style(start_muted_style);
+ 
+-    let sponsors = column![
+-        text(crate::tr!("start", "sponsors")).size(crate::ui::style::start_metrics::SECTION_TITLE),
+-        mouse_area(
+-            container(
+-                iced::widget::svg(iced::widget::svg::Handle::from_memory(include_bytes!(
+-                    "../../../assets/sponsors/openaec-logo-dark-on-light.svg"
+-                )))
+-                .width(Fill)
+-                .height(iced::Length::Fixed(
+-                    crate::ui::style::start_metrics::SPONSOR_H
+-                ))
+-                .content_fit(iced::ContentFit::Contain),
+-            )
+-            .width(Fill.max(300.0)),
+-        )
+-        .interaction(iced::mouse::Interaction::Pointer)
+-        .on_press(Message::OpenUrl("https://open-aec.com/".to_string())),
+-    ]
+-    .spacing(crate::ui::style::start_metrics::GAP_L)
+-    .align_x(iced::alignment::Horizontal::Center)
+-    .width(Fill);
+-
+-    let content = column![
+-        Space::new().height(iced::Length::Fixed(28.0)),
+-        container(headline).center_x(Fill),
+-        Space::new().height(iced::Length::Fixed(22.0)),
+-        container(primary_row).center_x(Fill),
+-        Space::new().height(iced::Length::Fixed(crate::ui::style::start_metrics::GAP_L)),
+-        container(secondary_row).center_x(Fill),
+-        Space::new().height(iced::Length::Fixed(crate::ui::style::start_metrics::GAP_L)),
+-        container(reddit_btn).center_x(Fill),
+-        Space::new().height(iced::Length::Fixed(20.0)),
+-        sponsors,
+-        Space::new().height(iced::Length::Fixed(52.0)),
+-    ]
+-    .spacing(0)
+-    .width(Fill)
+-    .height(Fill);
+-
+-    // Collapse side panels one at a time as width shrinks: Tutorials first,
+-    // then Discussions, Supporters, and Recent Documents last.
+-    #[derive(Clone, Copy, PartialEq, Eq)]
+-    enum StartLayout {
+-        AllPanels,
+-        WithoutVideos,
+-        WithoutVideosAndDiscussions,
+-        RecentAndWelcome,
+-        Compact,
+-    }
+-    let panel_w = 280.0f32;
+-    const VIDEO_PANEL_PADDING: f32 = 16.0;
+-    const VIDEO_SCROLL_GUTTER: f32 = 14.0;
+-    let measured_action_w =
+-        f32::from_bits(action_width_out.load(std::sync::atomic::Ordering::Relaxed));
+-    let welcome_wide_min = measured_action_w.max(360.0);
+-    let avail = (avail_w - 16.0).max(0.0); // minus the page's l/r padding
+-    let panel_widths = [panel_w; 4];
+-    let mut panel_visible = [true, true, true, true];
+-    let required_width = |visible: &[bool; 4]| {
+-        let visible_panels = visible.iter().filter(|&&shown| shown).count();
+-        welcome_wide_min
+-            + panel_widths
+-                .iter()
+-                .zip(visible)
+-                .filter_map(|(width, shown)| shown.then_some(*width))
+-                .sum::<f32>()
+-            + visible_panels as f32 * 16.0
+-    };
+-    // Re-measure after every collapse. There are no independent breakpoints:
+-    // the available width and the panels' preferred widths decide the state.
+-    for panel in [1usize, 2, 3, 0] {
+-        if required_width(&panel_visible) <= avail {
+-            break;
+-        }
+-        panel_visible[panel] = false;
+-    }
+-    let start_layout = match panel_visible {
+-        [true, true, true, true] => StartLayout::AllPanels,
+-        [true, false, true, true] => StartLayout::WithoutVideos,
+-        [true, false, false, true] => StartLayout::WithoutVideosAndDiscussions,
+-        [true, false, false, false] => StartLayout::RecentAndWelcome,
+-        _ => StartLayout::Compact,
+-    };
+-
+-    let recent = recent_files_panel(
+-        recents,
+-        thumbs,
+-        recent_limit,
+-        recent_limit_input,
+-        recent_view,
+-        match start_layout {
+-            StartLayout::AllPanels
+-            | StartLayout::WithoutVideos
+-            | StartLayout::WithoutVideosAndDiscussions
+-            | StartLayout::RecentAndWelcome => iced::Length::Fixed(panel_w),
+-            StartLayout::Compact => iced::Length::Fill,
+-        },
+-    );
+-    let welcome = container(content).width(Fill).height(Fill);
+-
+-    // Tutorial-videos rail: the official playlist, fetched at boot (cached on
+-    // disk) — thumbnail card + title per video, click opens the browser.
+-    let videos_panel: Element<'a, Message> = {
+-        // Derive the 16:9 cover box from the actual shared list width so the
+-        // whole thumbnail remains visible when that width changes.
+-        let thumb_h = (panel_w - VIDEO_PANEL_PADDING * 2.0 - VIDEO_SCROLL_GUTTER) * 9.0 / 16.0;
+-        let mut list = column![text(crate::tr!("start", "tutorials"))
+-            .size(crate::ui::style::start_metrics::SECTION_TITLE)]
+-        .spacing(crate::ui::style::start_metrics::GAP_L)
+-        .width(Fill)
+-        // Keep the scrollbar off the thumbnails.
+-        .padding(iced::Padding {
+-            right: VIDEO_SCROLL_GUTTER,
+-            ..iced::Padding::ZERO
+-        });
+-        for v in videos {
+-            let mut card = column![]
+-                .spacing(crate::ui::style::start_metrics::GAP)
+-                .width(Fill);
+-            if let Some(handle) = video_thumbs.get(&v.id) {
+-                card = card.push(
+-                    container(
+-                        iced::widget::image(handle.clone())
+-                            .width(Fill)
+-                            .height(iced::Length::Fixed(thumb_h))
+-                            .content_fit(iced::ContentFit::Contain),
+-                    )
+-                    .width(Fill)
+-                    .height(iced::Length::Fixed(thumb_h))
+-                    .style(|theme: &Theme| container::Style {
+-                        border: Border {
+-                            color: crate::ui::style::chrome::border(theme),
+-                            width: crate::ui::style::kit_metrics::line(),
+-                            radius: 6.0.into(),
+-                        },
+-                        ..Default::default()
+-                    })
+-                    .clip(true),
+-                );
+-            }
+-            card = card.push(
+-                text(v.title.clone())
+-                    .size(crate::ui::style::text::UI_LARGE)
+-                    .style(start_muted_style),
+-            );
+-            list = list.push(
+-                mouse_area(card)
+-                    .interaction(iced::mouse::Interaction::Pointer)
+-                    .on_press(Message::OpenUrl(crate::videos::watch_url(&v.id))),
+-            );
+-        }
+-        if videos.is_empty() {
+-            let note = if videos_loading {
+-                crate::tr!("start", "loading-videos")
+-            } else {
+-                crate::tr!("start", "videos-online")
+-            };
+-            list = list.push(
+-                text(note)
+-                    .size(crate::ui::style::text::UI_LARGE)
+-                    .style(start_muted_style),
+-            );
+-        }
+-        let playlist_btn = mouse_area(
+-            container(
+-                text(crate::tr!("start", "open-playlist")).size(crate::ui::style::text::UI_LARGE),
+-            )
+-            .padding(crate::ui::style::start_metrics::TAB_PAD)
+-            .width(Fill)
+-            .center_x(Fill)
+-            .style(|theme: &Theme| {
+-                let pair = theme.palette().danger.base;
+-                container::Style {
+-                    background: Some(Background::Color(pair.color)),
+-                    border: Border {
+-                        color: Color::TRANSPARENT,
+-                        width: 0.0,
+-                        radius: 6.0.into(),
+-                    },
+-                    text_color: Some(pair.text),
+-                    ..Default::default()
+-                }
+-            }),
+-        )
+-        .interaction(iced::mouse::Interaction::Pointer)
+-        .on_press(Message::OpenUrl(crate::videos::PLAYLIST_URL.to_string()));
+-        container(column![
+-            iced::widget::scrollable(list).height(Fill),
+-            Space::new().height(iced::Length::Fixed(
+-                crate::ui::style::start_metrics::SECTION_GAP
+-            )),
+-            playlist_btn,
+-        ])
+-        .width(match start_layout {
+-            StartLayout::AllPanels => iced::Length::Fixed(panel_w),
+-            StartLayout::WithoutVideos
+-            | StartLayout::WithoutVideosAndDiscussions
+-            | StartLayout::RecentAndWelcome
+-            | StartLayout::Compact => iced::Length::Fill,
+-        })
+-        .height(Fill)
+-        .padding(VIDEO_PANEL_PADDING)
+-        .style(|theme: &Theme| container::Style {
+-            background: Some(Background::Color(crate::ui::style::chrome::panel(theme))),
+-            border: Border {
+-                color: crate::ui::style::chrome::border(theme),
+-                width: crate::ui::style::kit_metrics::line(),
+-                radius: 8.0.into(),
+-            },
+-            ..Default::default()
+-        })
+-        .into()
+-    };
+-
+-    // GitHub Discussions rail. Native builds refresh from GitHub's public feed;
+-    // web builds read the CI-generated snapshot. Both sources mark pinned
+-    // discussions and sort them before the rest of the list.
+-    let discussions_panel: Element<'a, Message> = {
+-        let mut list = column![text(crate::tr!("start", "discussions"))
+-            .size(crate::ui::style::start_metrics::SECTION_TITLE)]
+-        .spacing(crate::ui::style::start_metrics::GAP_M)
+-        .width(Fill);
+-        for discussion in discussions {
+-            let mut meta = iced::widget::row![text(format!("#{}", discussion.number))
+-                .size(crate::ui::style::text::UI_SMALL)
+-                .style(start_muted_style),]
+-            .spacing(crate::ui::style::start_metrics::GAP)
+-            .align_y(iced::Center);
+-            if discussion.pinned {
+-                meta = meta.push(
+-                    text(crate::tr!("start", "pinned"))
+-                        .size(crate::ui::style::text::UI_SMALL)
+-                        .style(start_primary_style),
+-                );
+-            }
+-            if !discussion.author.is_empty() {
+-                meta = meta.push(
+-                    text(format!("@{}", discussion.author))
+-                        .size(crate::ui::style::text::UI_SMALL)
+-                        .style(start_muted_style),
+-                );
+-            }
+-            let card = container(
+-                column![
+-                    text(discussion.title.clone()).size(crate::ui::style::text::UI_LARGE),
+-                    meta,
+-                ]
+-                .spacing(crate::ui::style::start_metrics::GAP_S),
+-            )
+-            .padding([8, 10])
+-            .width(Fill)
+-            .style(|theme: &Theme| container::Style {
+-                background: Some(Background::Color(
+-                    crate::ui::style::chrome::page(theme).scale_alpha(0.42),
+-                )),
+-                border: Border {
+-                    color: crate::ui::style::chrome::border(theme),
+-                    width: crate::ui::style::kit_metrics::line(),
+-                    radius: 6.0.into(),
+-                },
+-                ..Default::default()
+-            });
+-            list = list.push(
+-                mouse_area(card)
+-                    .interaction(iced::mouse::Interaction::Pointer)
+-                    .on_press(Message::OpenUrl(discussion.url.clone())),
+-            );
+-        }
+-        if discussions.is_empty() {
+-            let note = if discussions_loading {
+-                crate::tr!("start", "loading-discussions")
+-            } else {
+-                crate::tr!("start", "discussions-online")
+-            };
+-            list = list.push(
+-                text(note)
+-                    .size(crate::ui::style::text::UI_LARGE)
+-                    .style(start_muted_style),
+-            );
+-        }
+-        let open_btn = mouse_area(
+-            container(
+-                text(crate::tr!("start", "open-discussions"))
+-                    .size(crate::ui::style::text::UI_LARGE),
+-            )
+-            .padding(crate::ui::style::start_metrics::TAB_PAD)
+-            .width(Fill)
+-            .center_x(Fill)
+-            .style(|theme: &Theme| {
+-                let pair = iced::theme::palette::Pair::new(
+-                    crate::ui::style::chrome::accent(theme),
+-                    crate::ui::style::chrome::on_accent(theme),
+-                );
+-                container::Style {
+-                    background: Some(Background::Color(pair.color)),
+-                    border: Border {
+-                        color: Color::TRANSPARENT,
+-                        width: 0.0,
+-                        radius: 6.0.into(),
+-                    },
+-                    text_color: Some(pair.text),
+-                    ..Default::default()
+-                }
+-            }),
+-        )
+-        .interaction(iced::mouse::Interaction::Pointer)
+-        .on_press(Message::OpenUrl(
+-            crate::discussions::DISCUSSIONS_URL.to_string(),
+-        ));
+-        container(column![
+-            iced::widget::scrollable(list).height(Fill),
+-            Space::new().height(iced::Length::Fixed(
+-                crate::ui::style::start_metrics::SECTION_GAP
+-            )),
+-            open_btn,
+-        ])
+-        .width(match start_layout {
+-            StartLayout::AllPanels | StartLayout::WithoutVideos => iced::Length::Fixed(panel_w),
+-            StartLayout::WithoutVideosAndDiscussions
+-            | StartLayout::RecentAndWelcome
+-            | StartLayout::Compact => iced::Length::Fill,
+-        })
+-        .height(Fill)
+-        .padding(crate::ui::style::start_metrics::CARD_PAD)
+-        .style(|theme: &Theme| container::Style {
+-            background: Some(Background::Color(crate::ui::style::chrome::panel(theme))),
+-            border: Border {
+-                color: crate::ui::style::chrome::border(theme),
+-                width: crate::ui::style::kit_metrics::line(),
+-                radius: 8.0.into(),
+-            },
+-            ..Default::default()
+-        })
+-        .into()
+-    };
+-
+-    // Right rail: Patreon supporters, fetched at boot. When the list is empty
+-    // (no token configured / offline) only the "Support on Patreon" button
+-    // shows, so the rail always invites support.
+-    let supporters: Element<'a, Message> = {
+-        let mut list = column![
+-            text(crate::tr!("start", "supporters"))
+-                .size(crate::ui::style::start_metrics::SECTION_TITLE),
+-            Space::new().height(iced::Length::Fixed(
+-                crate::ui::style::start_metrics::SECTION_GAP
+-            )),
++    container(
++        column![
++            Space::new().height(iced::Length::Fixed(56.0)),
++            container(headline).center_x(Fill),
++            Space::new().height(iced::Length::Fixed(6.0)),
++            container(tagline).center_x(Fill),
++            Space::new().height(iced::Length::Fixed(40.0)),
++            container(primary_row).center_x(Fill),
++            Space::new().height(iced::Length::Fixed(sm::GAP_L)),
++            container(secondary_row).center_x(Fill),
++            Space::new().height(Fill),
++            container(footer).center_x(Fill),
++            Space::new().height(iced::Length::Fixed(22.0)),
+         ]
+-        .spacing(crate::ui::style::start_metrics::GAP)
+-        .padding(iced::Padding {
+-            right: 12.0,
+-            ..iced::Padding::ZERO
+-        })
+-        .width(Fill);
+-        for (name, cents) in patrons {
+-            // Patreon payments are normalized to USD cents while the list is
+-            // generated; hand-maintained entries use USD cents as well.
+-            let amount = format!("${:.2}", *cents as f64 / 100.0);
+-            list = list.push(
+-                iced::widget::row![
+-                    text(name)
+-                        .size(crate::ui::style::text::UI_LARGE)
+-                        .style(start_muted_style)
+-                        .width(Fill),
+-                    text(amount)
+-                        .size(crate::ui::style::text::UI_LARGE)
+-                        .style(start_muted_style),
+-                ]
+-                .spacing(crate::ui::style::start_metrics::GAP),
+-            );
+-        }
+-        let support_btn = mouse_area(
+-            container(
+-                iced::widget::row![
+-                    crate::ui::icons::themed_danger_text(crate::ui::icons::HEART, 13.0),
+-                    text(crate::tr!("start", "support-on-patreon"))
+-                        .size(crate::ui::style::text::UI_LARGE),
+-                ]
+-                .spacing(crate::ui::style::start_metrics::GAP)
+-                .align_y(iced::Center),
+-            )
+-            .padding(crate::ui::style::start_metrics::TAB_PAD)
+-            .width(Fill)
+-            .center_x(Fill)
+-            .style(|theme: &Theme| {
+-                let pair = theme.palette().danger.base;
+-                container::Style {
+-                    background: Some(Background::Color(pair.color)),
+-                    border: Border {
+-                        color: Color::TRANSPARENT,
+-                        width: 0.0,
+-                        radius: 6.0.into(),
+-                    },
+-                    text_color: Some(pair.text),
+-                    ..Default::default()
+-                }
+-            }),
+-        )
+-        .interaction(iced::mouse::Interaction::Pointer)
+-        .on_press(Message::OpenUrl(
+-            "https://patreon.com/HakanSeven12".to_string(),
+-        ));
+-        container(column![
+-            iced::widget::scrollable(list).height(Fill),
+-            Space::new().height(iced::Length::Fixed(
+-                crate::ui::style::start_metrics::SECTION_GAP
+-            )),
+-            support_btn,
+-        ])
+-        .width(match start_layout {
+-            StartLayout::AllPanels
+-            | StartLayout::WithoutVideos
+-            | StartLayout::WithoutVideosAndDiscussions => iced::Length::Fixed(panel_w),
+-            StartLayout::RecentAndWelcome | StartLayout::Compact => iced::Length::Fill,
+-        })
+-        .height(Fill)
+-        .padding(crate::ui::style::start_metrics::PANEL_PAD)
+-        .style(|theme: &Theme| container::Style {
+-            background: Some(Background::Color(crate::ui::style::chrome::panel(theme))),
+-            border: Border {
+-                color: crate::ui::style::chrome::border(theme),
+-                width: crate::ui::style::kit_metrics::line(),
+-                radius: 8.0.into(),
+-            },
+-            ..Default::default()
+-        })
+-        .into()
+-    };
+-
+-    let body: Element<'a, Message> = match start_layout {
+-        StartLayout::AllPanels => {
+-            iced::widget::row![recent, videos_panel, welcome, discussions_panel, supporters,]
+-                .spacing(crate::ui::style::start_metrics::GAP_XL)
+-                .height(Fill)
+-                .into()
+-        }
+-        StartLayout::WithoutVideos => {
+-            iced::widget::row![recent, welcome, discussions_panel, supporters]
+-                .spacing(crate::ui::style::start_metrics::GAP_XL)
+-                .height(Fill)
+-                .into()
+-        }
+-        StartLayout::WithoutVideosAndDiscussions => iced::widget::row![recent, welcome, supporters]
+-            .spacing(crate::ui::style::start_metrics::GAP_XL)
+-            .height(Fill)
+-            .into(),
+-        StartLayout::RecentAndWelcome => iced::widget::row![recent, welcome]
+-            .spacing(crate::ui::style::start_metrics::GAP_XL)
+-            .height(Fill)
+-            .into(),
+-        StartLayout::Compact => {
+-            let tab_btn = |label: String, section: super::StartSection| {
+-                let is_active = active == section;
+-                button(text(label).size(crate::ui::style::start_metrics::ACTION_TEXT))
+-                    .on_press(Message::StartSectionSelect(section))
+-                    .padding([8, 18])
+-                    .style(move |theme: &Theme, status| {
+-                        let pair = match (is_active, status) {
+-                            (true, _) => Some(iced::theme::palette::Pair::new(
+-                                crate::ui::style::chrome::lit(theme),
+-                                crate::ui::style::chrome::strong(theme),
+-                            )),
+-                            (false, button::Status::Hovered) => {
+-                                Some(iced::theme::palette::Pair::new(
+-                                    crate::ui::style::chrome::hover(theme),
+-                                    crate::ui::style::chrome::strong(theme),
+-                                ))
+-                            }
+-                            _ => None,
+-                        };
+-                        button::Style {
+-                            background: pair.map(|p| Background::Color(p.color)),
+-                            text_color: pair
+-                                .map(|p| p.text)
+-                                .unwrap_or(crate::ui::style::readable::muted_text(theme)),
+-                            border: Border {
+-                                color: if is_active {
+-                                    crate::ui::style::chrome::accent(theme)
+-                                } else {
+-                                    Color::TRANSPARENT
+-                                },
+-                                width: if is_active { 1.0 } else { 0.0 },
+-                                radius: 6.0.into(),
+-                            },
+-                            ..Default::default()
+-                        }
+-                    })
+-            };
+-            let tab_bar = Row::with_children(vec![
+-                tab_btn(
+-                    crate::tr!("start", "recent-files"),
+-                    super::StartSection::Recent,
+-                )
+-                .into(),
+-                tab_btn(crate::tr!("start", "videos"), super::StartSection::Videos).into(),
+-                tab_btn(crate::tr!("start", "welcome"), super::StartSection::Welcome).into(),
+-                tab_btn(
+-                    crate::tr!("start", "discussions"),
+-                    super::StartSection::Discussions,
+-                )
+-                .into(),
+-                tab_btn(
+-                    crate::tr!("start", "supporters"),
+-                    super::StartSection::Supporters,
+-                )
+-                .into(),
+-            ])
+-            .spacing(crate::ui::style::start_metrics::GAP)
+-            .align_y(iced::Center)
+-            .wrap()
+-            .vertical_spacing(0.0);
+-            let section_body: Element<'a, Message> = match active {
+-                super::StartSection::Recent => container(recent)
+-                    .width(Fill)
+-                    .height(Fill)
+-                    .center_x(Fill)
+-                    .into(),
+-                super::StartSection::Videos => container(videos_panel)
+-                    .width(Fill)
+-                    .height(Fill)
+-                    .center_x(Fill)
+-                    .into(),
+-                super::StartSection::Welcome => welcome.into(),
+-                super::StartSection::Discussions => container(discussions_panel)
+-                    .width(Fill)
+-                    .height(Fill)
+-                    .center_x(Fill)
+-                    .into(),
+-                super::StartSection::Supporters => container(supporters)
+-                    .width(Fill)
+-                    .height(Fill)
+-                    .center_x(Fill)
+-                    .into(),
+-            };
+-            column![
+-                container(tab_bar).center_x(Fill),
+-                Space::new().height(iced::Length::Fixed(
+-                    crate::ui::style::start_metrics::SECTION_GAP
+-                )),
+-                section_body,
+-            ]
+-            .width(Fill)
+-            .height(Fill)
+-            .into()
+-        }
+-    };
+-
+-    container(body)
+-        .style(|theme: &Theme| container::Style {
+-            background: Some(Background::Color(crate::ui::style::chrome::page(theme))),
+-            ..Default::default()
+-        })
+-        .padding(iced::Padding {
+-            top: 16.0,
+-            right: 8.0,
+-            bottom: 16.0,
+-            left: 8.0,
+-        })
++        .spacing(0)
+         .width(Fill)
+-        .height(Fill)
+-        .into()
++        .height(Fill),
++    )
++    .style(|theme: &Theme| container::Style {
++        background: Some(Background::Color(crate::ui::style::chrome::page(theme))),
++        ..Default::default()
++    })
++    .padding(iced::Padding {
++        top: 16.0,
++        right: 8.0,
++        bottom: 16.0,
++        left: 8.0,
++    })
++    .width(Fill)
++    .height(Fill)
++    .into()
+ }
+ 
+ // ── Recent Documents panel (Start tab left rail) ──────────────────────────
+@@ -5495,6 +4892,9 @@ fn start_page_content<'a>(
+ /// Recent files as tiles: small thumbnails wrapping across the panel, or one
+ /// large preview per row. A tile opens its file; the list view keeps the
+ /// remove buttons.
++// The Start page no longer draws the recent-documents rail, but the panel and
++// its preview loader stay: recent files are still tracked and openable.
++#[allow(dead_code)]
+ fn recent_tiles<'a>(
+     recents: &'a [std::path::PathBuf],
+     thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
+@@ -5585,6 +4985,9 @@ fn recent_tiles<'a>(
+     }
+ }
+ 
++// Unused by the redesigned Start page, kept so the recent-documents list can
++// come back without rebuilding its preview/edit paths.
++#[allow(dead_code)]
+ pub(super) fn recent_files_panel<'a>(
+     recents: &'a [std::path::PathBuf],
+     thumbs: &'a std::collections::HashMap<std::path::PathBuf, Option<iced::widget::image::Handle>>,
+@@ -6112,24 +5515,52 @@ mod tests {
+     /// already used `saturating_sub`.
+     #[test]
+     fn recent_limit_plus_step_survives_an_overflowing_input() {
+-        let _ = start_page_content(
+-            &[],
+-            &[],
+-            false,
+-            &std::collections::HashMap::new(),
+-            &[],
+-            false,
++        // The recent-documents rail left the start page, but the panel and its
++        // uncapped count box are still part of the app, so the guard stays
++        // covered here.
++        let _ = super::recent_files_panel(
+             &[],
+             &std::collections::HashMap::new(),
+             50,
+             "18446744073709551615",
+             super::super::RecentView::default(),
+-            800.0,
+-            std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+-            super::super::StartSection::default(),
+-            None,
++            iced::Length::Fill,
+         );
+     }
++
++    /// The redesigned page carries the fork's name and only the drawing
++    /// actions: none of the upstream promotional rails are drawn any more.
++    #[test]
++    fn start_page_is_vibe_engineer_without_promotional_rails() {
++        for width in [1200.0, 480.0] {
++            let mut ui = iced_test::simulator::Simulator::with_size(
++                Default::default(),
++                iced::Size::new(width, 720.0),
++                start_page_content(
++                    std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
++                    None,
++                ),
++            );
++            assert!(
++                ui.find("Vibe Engineer").is_ok(),
++                "the product name is on the page at {width}px"
++            );
++            for removed in [
++                "Recent Documents",
++                "Supporters",
++                "Discussions",
++                "r/OpenCADStudio",
++                "OCS Web",
++                "Send Feedback",
++                "Donate",
++            ] {
++                assert!(
++                    ui.find(removed).is_err(),
++                    "{removed} is no longer on the start page ({width}px)"
++                );
++            }
++        }
++    }
+ }
+ 
+ /// The objects in a REFEDIT session's working set: the checked-out copies and
+diff --git a/src/cli.rs b/src/cli.rs
+index f55d3f9..de21538 100644
+--- a/src/cli.rs
++++ b/src/cli.rs
+@@ -18,7 +18,7 @@ use std::sync::OnceLock;
+ 
+ use clap::Parser;
+ 
+-/// Open CAD Studio command-line options.
++/// Vibe Engineer command-line options (a fork of Open CAD Studio).
+ #[derive(Parser, Debug, Default)]
+ #[command(
+     name = "OpenCADStudio",
+@@ -30,7 +30,7 @@ use clap::Parser;
+         "\nprofile: ", env!("OCS_BUILD_PROFILE"),
+         "\nfeatures: ", env!("OCS_BUILD_FEATURES"),
+     ),
+-    about = crate::t!("Open CAD Studio — 2D/3D CAD editor").into_owned(),
++    about = "Vibe Engineer: engineering assistant for CAD drawings (built on Open CAD Studio)",
+     long_about = None,
+ )]
+ pub struct Cli {
+diff --git a/src/ui/dock.rs b/src/ui/dock.rs
+index 76eb0ee..bc94897 100644
+--- a/src/ui/dock.rs
++++ b/src/ui/dock.rs
+@@ -143,7 +143,7 @@ pub enum PanelId {
+     QuickCalc,
+     /// The whole command history, kept open beside the drawing.
+     CommandHistory,
+-    /// The Assistant: a chat with an external AI agent that drives the drawing (ASSISTANT).
++    /// Vibe Engineer's docked assistant preview (ASSISTANT).
+     Assistant,
+     /// Dynamic plugin dockable side panel / palette (identified by unique numeric ID).
+     Plugin(u32),
+@@ -190,7 +190,7 @@ impl PanelId {
+             PanelId::Laywalk => "Layer Walk",
+             PanelId::QuickCalc => "QuickCalc",
+             PanelId::CommandHistory => "Command History",
+-            PanelId::Assistant => "Assistant",
++            PanelId::Assistant => "Vibe Engineer",
+             PanelId::Plugin(_) => "Plugin",
+         }
+     }
+diff --git a/src/ui/window/about.rs b/src/ui/window/about.rs
+index 9c6415e..32e7c05 100644
+--- a/src/ui/window/about.rs
++++ b/src/ui/window/about.rs
+@@ -195,8 +195,11 @@ pub fn view_window(sizing: crate::ui::modal::ModalSizing) -> Element<'static, Me
+         row![
+             logo,
+             column![
+-                text("Open CAD Studio").size(28).style(primary_style),
+-                text(t!("CAD application for Architecture & Engineering"))
++                text("Vibe Engineer").size(28).style(primary_style),
++                text("Engineering assistant for CAD drawings")
++                    .size(11)
++                    .style(muted_style),
++                text("based on Open CAD Studio (GPL-3.0)")
+                     .size(11)
+                     .style(muted_style),
+                 text(version.clone()).size(13),
+diff --git a/src/ui/window/assistant.rs b/src/ui/window/assistant.rs
+index 97dc641..9b50fb7 100644
+--- a/src/ui/window/assistant.rs
++++ b/src/ui/window/assistant.rs
+@@ -1,13 +1,7 @@
+-//! The Assistant pallet (ASSISTANT): a chat panel for an AI agent that drives
+-//! this OpenCAD Studio window.
+-//!
+-//! The panel is only the face. The agent is an external service on the same
+-//! machine (typically an LLM client using the `--mcp` endpoint), reached over
+-//! a loopback socket that carries one JSON object per line each way; the
+-//! protocol is described in `docs/assistant-panel.md`. When nothing listens
+-//! yet and `OCS_ASSISTANT_COMMAND` is set, the panel starts the service
+-//! itself, so opening the pallet is all the user does. No model, key or
+-//! vendor is built into the app.
++//! The Vibe Engineer docked assistant. It connects only to the configured
++//! local read-only assistant service over loopback. Without an OpenRouter key,
++//! the service still supports deterministic drawing commands and refuses
++//! model answers without making a provider request.
+ 
+ use std::io::{BufRead, BufReader, Write};
+ use std::net::{SocketAddr, TcpStream};
+@@ -35,24 +29,16 @@ const DEFAULT_PORT: u16 = 8766;
+ /// (it connects to OCS and to its model provider first).
+ const CONNECT_PATIENCE: Duration = Duration::from_secs(40);
+ 
+-/// Quick requests offered as chips under the conversation.
+-const CHIPS: [(&str, &str); 6] = [
+-    (
+-        "What's open?",
+-        "What drawing is open, and what's in it? Keep it short.",
+-    ),
+-    ("Selection?", "What is selected right now?"),
+-    ("Zoom extents", "Zoom to the whole drawing."),
+-    ("Show view", "Show me the current view."),
+-    ("Undo", "Undo the last change."),
+-    ("Save", "Save the drawing."),
+-];
++/// Read-only local commands supported even when no model key is configured.
++const CHIPS: [(&str, &str); 2] = [("/summary", "/summary"), ("/help", "/help")];
+ 
+ #[derive(Debug, Clone)]
+ pub enum AssistantMsg {
+     /// Timer: drain what the service sent.
+     Poll,
+     Input(String),
++    /// Switch the local Vibe Engineer preview section.
++    Section(AssistantSection),
+     Send,
+     Chip(usize),
+     Stop,
+@@ -61,6 +47,14 @@ pub enum AssistantMsg {
+     Reconnect,
+ }
+ 
++#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
++pub enum AssistantSection {
++    #[default]
++    Conversation,
++    Sources,
++    ChangePlan,
++}
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ enum CardState {
+     Pending,
+@@ -105,6 +99,16 @@ struct Status {
+     cost: f64,
+ }
+ 
++#[derive(Default)]
++struct SourceSnapshot {
++    session_id: String,
++    document_id: Option<u64>,
++    revision: Option<u64>,
++    path: Option<String>,
++    handles: Vec<String>,
++    fact_paths: Vec<String>,
++}
++
+ #[derive(Debug, Clone, PartialEq)]
+ enum Link {
+     /// Not started (the pallet has not been opened yet).
+@@ -131,9 +135,11 @@ struct Conn {
+ pub struct AssistantPalette {
+     pub show: bool,
+     input: String,
++    section: AssistantSection,
+     items: Vec<Item>,
+     running: bool,
+     status: Status,
++    sources: Option<SourceSnapshot>,
+     link: Link,
+     conn: Option<Conn>,
+     last_refresh: Option<Instant>,
+@@ -144,9 +150,11 @@ impl Default for AssistantPalette {
+         Self {
+             show: false,
+             input: String::new(),
++            section: AssistantSection::Conversation,
+             items: Vec::new(),
+             running: false,
+             status: Status::default(),
++            sources: None,
+             link: Link::Idle,
+             conn: None,
+             last_refresh: None,
+@@ -155,6 +163,10 @@ impl Default for AssistantPalette {
+ }
+ 
+ impl AssistantPalette {
++    fn can_send(&self) -> bool {
++        self.link == Link::Connected && self.status.ocs && !self.running
++    }
++
+     /// How often the pallet wants a [`AssistantMsg::Poll`], if at all.
+     pub fn poll_interval(&self) -> Option<Duration> {
+         if !self.show && !self.running {
+@@ -168,7 +180,7 @@ impl AssistantPalette {
+         })
+     }
+ 
+-    /// The pallet was shown: make sure there is a connection.
++    /// Show the panel and connect to the configured loopback service.
+     pub fn opened(&mut self) {
+         self.show = true;
+         if self.conn.is_none() {
+@@ -176,6 +188,19 @@ impl AssistantPalette {
+         }
+     }
+ 
++    /// Close the loopback connection when the dock is explicitly closed.
++    pub fn closed(&mut self) {
++        if self.running {
++            self.send(serde_json::json!({"type": "stop"}));
++        }
++        self.conn = None;
++        self.show = false;
++        self.running = false;
++        self.status = Status::default();
++        self.sources = None;
++        self.link = Link::Idle;
++    }
++
+     fn connect(&mut self) {
+         self.link = Link::Connecting("Starting the assistant…".into());
+         self.conn = Some(start_connection());
+@@ -192,6 +217,7 @@ impl AssistantPalette {
+         match msg {
+             AssistantMsg::Poll => return self.drain(),
+             AssistantMsg::Input(v) => self.input = v,
++            AssistantMsg::Section(section) => self.section = section,
+             AssistantMsg::Send => return self.submit(None),
+             AssistantMsg::Chip(i) => {
+                 if let Some((_, say)) = CHIPS.get(i) {
+@@ -205,6 +231,7 @@ impl AssistantPalette {
+                 if !self.running {
+                     self.send(serde_json::json!({"type": "reset"}));
+                     self.items.clear();
++                    self.sources = None;
+                 }
+             }
+             AssistantMsg::ToggleCard(i) => {
+@@ -214,6 +241,7 @@ impl AssistantPalette {
+             }
+             AssistantMsg::Reconnect => {
+                 self.conn = None;
++                self.sources = None;
+                 self.connect();
+             }
+         }
+@@ -225,9 +253,9 @@ impl AssistantPalette {
+         if text.is_empty() || self.running {
+             return Task::none();
+         }
+-        if self.link != Link::Connected {
++        if self.link != Link::Connected || !self.status.ocs {
+             self.items.push(Item::Error(
+-                "The assistant isn't connected yet. Wait a moment or press Reconnect.".into(),
++                "The local assistant and CAD bridge are not ready. Reconnect after opening one CAD session.".into(),
+             ));
+             return scroll_to_end();
+         }
+@@ -293,6 +321,16 @@ impl AssistantPalette {
+     fn apply(&mut self, ev: serde_json::Value) {
+         let s = |k: &str| ev.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+         match ev.get("type").and_then(|t| t.as_str()).unwrap_or("") {
++            "sources" => {
++                self.sources = Some(SourceSnapshot {
++                    session_id: s("session_id"),
++                    document_id: ev.get("document_id").and_then(|v| v.as_u64()),
++                    revision: ev.get("revision").and_then(|v| v.as_u64()),
++                    path: ev.get("path").and_then(|v| v.as_str()).map(str::to_owned),
++                    handles: string_list(ev.get("handles")),
++                    fact_paths: string_list(ev.get("fact_paths")),
++                });
++            }
+             "status" => {
+                 self.status = Status {
+                     ocs: ev.get("ocs").and_then(|v| v.as_bool()).unwrap_or(false),
+@@ -428,6 +466,16 @@ fn decode_image(data_url: &str) -> Option<image::Handle> {
+         .map(image::Handle::from_bytes)
+ }
+ 
++fn string_list(value: Option<&serde_json::Value>) -> Vec<String> {
++    value
++        .and_then(serde_json::Value::as_array)
++        .into_iter()
++        .flatten()
++        .filter_map(serde_json::Value::as_str)
++        .map(str::to_owned)
++        .collect()
++}
++
+ // ── The service connection (a thread per connection) ────────────────────
+ 
+ /// Split a command line into program and arguments: whitespace separates,
+@@ -688,15 +736,162 @@ fn band<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+ 
+ pub fn view<'a>(
+     p: &'a AssistantPalette,
+-    theme: &'a Theme,
++    _theme: &'a Theme,
+     width: f32,
+     chrome: Chrome,
++    selected_count: usize,
+ ) -> Element<'a, Message> {
+-    let title_bar = crate::ui::dock::title_bar(PanelId::Assistant, "Assistant".to_string(), chrome);
+-    kit::palette(title_bar, body(p, theme), width)
++    let title_bar =
++        crate::ui::dock::title_bar(PanelId::Assistant, "Vibe Engineer".to_string(), chrome);
++    kit::palette(title_bar, body(p, _theme, selected_count), width)
++}
++
++fn body<'a>(
++    p: &'a AssistantPalette,
++    theme: &'a Theme,
++    selected_count: usize,
++) -> Element<'a, Message> {
++    let section_button = |label: &'static str, section: AssistantSection| {
++        kit::text_button(
++            label,
++            Some(m(AssistantMsg::Section(section))),
++            p.section == section,
++        )
++    };
++    let tabs = row![
++        section_button("Conversation", AssistantSection::Conversation),
++        section_button("Sources", AssistantSection::Sources),
++        section_button("Change Plan", AssistantSection::ChangePlan),
++    ]
++    .spacing(km::TOOL_GAP)
++    .wrap()
++    .vertical_spacing(km::TOOL_GAP);
++
++    let service_note = match (&p.link, p.status.ocs, p.status.api_key) {
++        (Link::Connected, true, false) => "No OpenRouter key is configured. /summary, /entity HANDLE, and /help work without one; model answers are unavailable. The service is read-only.",
++        (Link::Connected, true, true) => "Connected to the local read-only service. CAD edits and structural assessments are disabled.",
++        (Link::Connected, false, _) => "The local service is connected, but its CAD bridge is not ready. Reconnect after opening one CAD editor session.",
++        (Link::Connecting(_), _, _) => "Connecting to the local assistant service…",
++        (Link::Down(_), _, _) => "The local assistant service is unavailable. Reconnect to try again.",
++        (Link::Idle, _, _) => "Open the Assistant palette to connect to the local service.",
++    };
++    let service_note = container(
++        text(service_note)
++            .size(ui_text::UI_SMALL)
++            .line_height(ui_text::line())
++            .style(muted_text),
++    )
++    .padding(km::TOOL_GAP)
++    .width(Fill)
++    .style(|t: &Theme| container::Style {
++        background: Some(Background::Color(chrome::surface(t))),
++        ..Default::default()
++    });
++
++    let section: Element<'a, Message> = match p.section {
++        AssistantSection::Conversation => conversation(p, theme),
++        AssistantSection::Sources => {
++            let selection = if selected_count == 0 {
++                "No elements selected in the drawing.".to_string()
++            } else {
++                let noun = if selected_count == 1 {
++                    "element"
++                } else {
++                    "elements"
++                };
++                format!("{selected_count} selected {noun} in the active drawing.")
++            };
++            let mut source_section = column![text("Sources and selected elements")
++                .size(ui_text::UI_TITLE)
++                .font(kit::SEMIBOLD),]
++            .spacing(km::TOOL_GAP)
++            .push(
++                text(selection)
++                    .size(ui_text::UI)
++                    .line_height(ui_text::line()),
++            );
++            if let Some(sources) = &p.sources {
++                let mut lines = vec![format!("Session: {}", sources.session_id)];
++                if let Some(document_id) = sources.document_id {
++                    lines.push(format!("Document ID: {document_id}"));
++                }
++                if let Some(revision) = sources.revision {
++                    lines.push(format!("Revision: {revision}"));
++                }
++                if let Some(path) = sources.path.as_deref().filter(|path| !path.is_empty()) {
++                    lines.push(format!("Drawing: {path}"));
++                }
++                if !sources.handles.is_empty() {
++                    lines.push(format!("Element handles: {}", sources.handles.join(", ")));
++                }
++                if !sources.fact_paths.is_empty() {
++                    lines.push(format!("Recorded facts: {}", sources.fact_paths.join(", ")));
++                }
++                for line in lines {
++                    source_section = source_section
++                        .push(text(line).size(ui_text::UI).line_height(ui_text::line()));
++                }
++                source_section = source_section.push(
++                    text("Source identity and evidence paths reported by the local service.")
++                        .size(ui_text::UI_SMALL)
++                        .line_height(ui_text::line())
++                        .style(muted_text),
++                );
++            } else {
++                source_section = source_section.push(
++                    text("Source details appear here after a supported local query, such as /summary or /entity HANDLE.")
++                        .size(ui_text::UI)
++                        .line_height(ui_text::line())
++                        .style(muted_text),
++                );
++            }
++            source_section.into()
++        }
++        AssistantSection::ChangePlan => column![
++            text("Change Plan")
++                .size(ui_text::UI_TITLE)
++                .font(kit::SEMIBOLD),
++            text("No change plan")
++                .size(ui_text::UI)
++                .line_height(ui_text::line()),
++            text("Reviewed CAD change proposals will appear here in a later milestone.")
++                .size(ui_text::UI)
++                .line_height(ui_text::line())
++                .style(muted_text),
++        ]
++        .spacing(km::TOOL_GAP)
++        .into(),
++    };
++
++    let content: Element<'a, Message> = match p.section {
++        AssistantSection::Conversation => section,
++        _ => scrollable(
++            column![service_note, section]
++                .spacing(km::GRID_INSET_L)
++                .width(Fill)
++                .padding(Padding {
++                    top: km::TOOL_GAP,
++                    bottom: km::TOOL_GAP,
++                    left: km::GRID_INSET_L,
++                    right: km::GRID_INSET_R,
++                }),
++        )
++        .direction(iced::widget::scrollable::Direction::Vertical(
++            iced::widget::scrollable::Scrollbar::new()
++                .width(km::SCROLLBAR_W)
++                .scroller_width(km::SCROLL_THUMB_W)
++                .margin(0),
++        ))
++        .style(kit::scroll_style)
++        .height(Fill)
++        .width(Fill)
++        .into(),
++    };
++
++    column![band(tabs), rule(), content].height(Fill).into()
+ }
+ 
+-fn body<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
++fn conversation<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
+     // Header: connection dot, drawing, model and cost, New chat.
+     let (dot_ok, line) = match &p.link {
+         Link::Connected if p.status.ocs => (
+@@ -733,7 +928,7 @@ fn body<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
+     ]
+     .spacing(km::TOOL_GAP)
+     .align_y(iced::Center);
+-    if matches!(p.link, Link::Down(_)) {
++    if matches!(p.link, Link::Down(_)) || (p.link == Link::Connected && !p.status.ocs) {
+         head = head.push(kit::text_button(
+             "Reconnect",
+             Some(m(AssistantMsg::Reconnect)),
+@@ -759,14 +954,21 @@ fn body<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
+             true,
+         ));
+     }
+-    if p.link == Link::Connected && !p.status.api_key && !p.status.model.is_empty() {
++    if p.link == Link::Connected && p.status.ocs && !p.status.api_key {
+         header = header.push(
+-            text(crate::t!(
+-                "The assistant service has no API key configured."
+-            ))
++            text(
++                "No OpenRouter key: local read-only commands work; model answers are unavailable.",
++            )
+             .size(ui_text::UI)
+             .line_height(ui_text::line())
+-            .style(danger_text),
++            .style(muted_text),
++        );
++    } else if p.link == Link::Connected && !p.status.ocs {
++        header = header.push(
++            text("CAD bridge is not ready. Open one CAD editor session and reconnect.")
++                .size(ui_text::UI)
++                .line_height(ui_text::line())
++                .style(danger_text),
+         );
+     }
+ 
+@@ -775,15 +977,15 @@ fn body<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
+     if p.items.is_empty() {
+         log = log.push(
+             column![
+-                text("Tell me what to do in this drawing.")
++                text("Ask about recorded data in the active drawing.")
+                     .size(ui_text::UI)
+                     .line_height(ui_text::line())
+                     .font(kit::SEMIBOLD),
+-                text("For example: “select all the doors”, “how many rooms are there?”, “move the selection 1 m right”, “zoom to the kitchen”.")
++                text("Use /summary for drawing counts, /entity HANDLE for one recorded element, or /help for supported requests.")
+                     .size(ui_text::UI)
+                     .line_height(ui_text::line())
+                     .style(muted_text),
+-                text("Every step I take appears here as a card and happens live in the drawing. Ctrl+Z undoes it like any edit.")
++                text("This service is read-only. It does not modify drawings or assess structural safety.")
+                     .size(ui_text::UI)
+                     .line_height(ui_text::line())
+                     .style(muted_text),
+@@ -817,10 +1019,11 @@ fn body<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
+ 
+     // Chips.
+     let mut chips = row![].spacing(km::TOOL_GAP);
++    let can_send = p.can_send();
+     for (i, (label, _)) in CHIPS.iter().enumerate() {
+         chips = chips.push(kit::text_button(
+             *label,
+-            (!p.running).then(|| m(AssistantMsg::Chip(i))),
++            can_send.then(|| m(AssistantMsg::Chip(i))),
+             false,
+         ));
+     }
+@@ -834,7 +1037,7 @@ fn body<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
+         .padding(kit::BOX_PAD)
+         .style(kit::combo_style)
+         .width(Fill);
+-    if !p.running {
++    if can_send {
+         input = input
+             .on_input(|v| m(AssistantMsg::Input(v)))
+             .on_submit(m(AssistantMsg::Send));
+@@ -842,7 +1045,7 @@ fn body<'a>(p: &'a AssistantPalette, theme: &'a Theme) -> Element<'a, Message> {
+     let action = if p.running {
+         kit::text_button("Stop", Some(m(AssistantMsg::Stop)), false)
+     } else {
+-        kit::text_button("Send", Some(m(AssistantMsg::Send)), true)
++        kit::text_button("Send", can_send.then(|| m(AssistantMsg::Send)), can_send)
+     };
+     let composer = row![input, action]
+         .spacing(km::TOOL_GAP)
+@@ -970,10 +1173,91 @@ mod tests {
+     fn palette() -> AssistantPalette {
+         AssistantPalette {
+             link: Link::Connected,
++            status: Status {
++                ocs: true,
++                ..Default::default()
++            },
+             ..Default::default()
+         }
+     }
+ 
++    #[test]
++    fn no_key_still_allows_local_read_only_commands() {
++        let mut p = palette();
++        assert!(!p.status.api_key);
++        assert!(p.can_send());
++        let (tx, rx) = mpsc::channel();
++        let (_incoming_tx, incoming_rx) = mpsc::channel();
++        p.conn = Some(Conn {
++            rx: incoming_rx,
++            tx: Some(tx),
++        });
++        p.input = "/summary".into();
++
++        let _ = p.submit(None);
++
++        assert_eq!(
++            rx.try_recv().unwrap(),
++            r#"{"type":"chat","text":"/summary"}"#
++        );
++        assert!(p
++            .items
++            .iter()
++            .any(|item| matches!(item, Item::User(text) if text == "/summary")));
++    }
++
++    #[test]
++    fn send_waits_for_the_connected_cad_bridge() {
++        let mut p = palette();
++        p.status.ocs = false;
++        assert!(!p.can_send());
++        p.status.ocs = true;
++        p.running = true;
++        assert!(!p.can_send());
++    }
++
++    #[test]
++    fn sources_event_records_service_reported_identity_and_evidence_paths() {
++        let mut p = palette();
++        p.apply(json!({
++            "type": "sources",
++            "session_id": "session-1",
++            "document_id": 17,
++            "revision": 42,
++            "path": "Drawing1.dwg",
++            "handles": ["A1"],
++            "fact_paths": ["counts.entities"]
++        }));
++        let sources = p.sources.as_ref().expect("source event retained");
++        assert_eq!(sources.session_id, "session-1");
++        assert_eq!(sources.document_id, Some(17));
++        assert_eq!(sources.revision, Some(42));
++        assert_eq!(sources.path.as_deref(), Some("Drawing1.dwg"));
++        assert_eq!(sources.handles, ["A1"]);
++        assert_eq!(sources.fact_paths, ["counts.entities"]);
++    }
++
++    #[test]
++    fn closing_a_running_panel_sends_stop_and_drops_the_connection() {
++        let mut p = palette();
++        let (tx, rx) = mpsc::channel();
++        let (_incoming_tx, incoming_rx) = mpsc::channel();
++        p.conn = Some(Conn {
++            rx: incoming_rx,
++            tx: Some(tx),
++        });
++        p.running = true;
++        p.show = true;
++
++        p.closed();
++
++        assert_eq!(rx.try_recv().unwrap(), r#"{"type":"stop"}"#);
++        assert!(p.conn.is_none());
++        assert!(!p.show);
++        assert!(!p.running);
++        assert_eq!(p.link, Link::Idle);
++    }
++
+     #[test]
+     fn command_lines_split_on_spaces_and_keep_quoted_paths() {
+         assert_eq!(
