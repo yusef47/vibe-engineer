@@ -35,8 +35,303 @@ Updated: 2026-11-18 (Africa/Cairo)
   safe-workdir 6/6, stale-revision 4/4. Evidence:
   `tools/ocs/results/2026-11-18_v2026.46_windows_local.md`; reproduction
   (PowerShell): `tools/ocs/README.md`.
+- **Milestone 3A — read-only QA over the drawing index is open for review on
+  branch `feat/drawing-qa` (PR #4, stop before merge).** New stdlib-only
+  `tools/ocs/drawing_qa.py` (+ `test_drawing_qa.py`, `tools/ocs/.env.example`):
+  Arabic/English questions over an ALREADY-BUILT index are answered by a
+  configurable OpenRouter model from a SMALL relevant index excerpt (never
+  the whole drawing; count questions send ZERO entity records, handle
+  questions exactly one slim record). Two freshness gates (`check_fresh()`
+  before retrieval and again before display — an answer produced while the
+  drawing changed is discarded), citations validated against the retrieved
+  excerpt before display (handles must exist among the returned records,
+  fact paths must resolve, stated numbers must exist in the facts —
+  Arabic-Indic digits normalized), and the DISPLAYED answer is composed
+  locally from index values (count/layer/handle/text intents render
+  deterministically from their facts with every rendered field listed in
+  the evidence; summary/unmapped render exactly the cited fields; the
+  model's free wording — answers AND refusal reasons — is never shown, so
+  unsupported prose cannot reach the user; see the PR #4 review rounds
+  below). Honest "cannot answer" (structural-safety
+  questions and edit requests are refused deterministically with ZERO model
+  calls), one request per question (no loops of any kind), key from
+  `$OPENROUTER_API_KEY` (or an ignored repo-root `.env` seeding it; redacted
+  from all errors), spending cap default $5.00 — CUMULATIVE across every run
+  sharing the default usage log, a post-call stop honestly labeled (not a
+  pre-call guarantee; a hard guarantee needs an OpenRouter dashboard limit),
+  usage logging without key or prompt content. Verified: 40/40 checks
+  (35 unit + 4 real-binary; the one real-model check honestly SKIPs without
+  a key — see the PR #4 review section below). All four OCS regression
+  suites re-ran green on the same day (one documented `os error 1175` save
+  flake per environment note; re-run remedy).
 
 ## Review handoff for Codex (GitHub is the handoff channel)
+
+- **Branch:** `feat/drawing-qa` — **PR #4: https://github.com/yusef47/vibe-engineer/pull/4**
+  (base `main` at merge commit `5d895d2`; stop before merging, per the
+  review gate).
+- **What this slice is:** milestone 3A — the first model-facing slice, and
+  deliberately READ-ONLY. The user can ask simple Arabic or English
+  questions about an ALREADY-INDEXED DXF (entity counts, layers, handles,
+  recorded text) and get an answer whose every factual claim is locally
+  validated against a small retrieved excerpt of the index before it is
+  displayed. No CAD mutation path exists in the new code; no edit proposals
+  either (that is a later milestone through `Serve.mutate()`'s rules).
+- **What changed (all new files except docs):**
+  1. `tools/ocs/drawing_qa.py` (new): the QA layer. Pipeline: local
+     bilingual classifier → freshness gate #1 (`check_fresh()`) → intent
+     excerpt (count: counts only; layers: layer counts; handle: one slim
+     record; text: matched records; unmapped: capped summary slice) → ONE
+     OpenRouter call (stdlib `urllib`, strict JSON contract) → freshness
+     gate #2 → citation/number validation → display with an evidence block.
+     Deterministic guards (structural-safety questions, edit requests)
+     refuse with ZERO model calls. Client: timeout, max_tokens, prompt-size
+     cap, spend cap from provider-reported `usage.cost`, redaction of the
+     key in every error path, usage records with tokens/cost/latency and a
+     question HASH (never the key, never prompt content). Excerpts never
+     contain the source path or file hash.
+  2. `tools/ocs/test_drawing_qa.py` (new): 35 unit checks (U1–U35, fake
+     model, no network/no key), 4 real-binary checks (R1–R4, real pinned
+     OCS + fake model), 1 real-model check (M1) that runs ONLY with
+     `--real-openrouter` AND the key set, else SKIP (never proof). R3
+     reuses the fixture R2 produced — one smoke-subprocess run per suite
+     invocation instead of two, which halves exposure to the documented
+     `os error 1175` save flake and matches the declared R3-on-R2
+     dependency (no behavioral safety rule touched). U27/U28 pin the
+     Codex PR #4 review round-1 repros, U29–U31 pin the cumulative
+     spend-cap semantics, U32/U33 pin the round-2 repros, and U34/U35
+     pin the round-3 repros (see the review sections below).
+  3. `tools/ocs/.env.example` (new): documents `OPENROUTER_API_KEY` /
+     `OPENROUTER_MODEL` / `OPENROUTER_SPEND_CAP_USD`; copy to repo-root
+     `.env` (gitignored). `drawing_qa.py` seeds only `OPENROUTER_*` keys
+     from `.env`, existing env always wins, values never printed.
+  4. Docs: root `README.md` status, `tools/ocs/README.md` (milestone 3A
+     section + pinned-model rows).
+  - Deliberately NOT changed: `drawing_index.py`, `ocs_smoke_test.py`,
+    `setup.*`, the pinned version/digests, and every behavioral safety rule
+    (exactly-once mutations, no rmtree, staleness gates). The QA layer only
+    CALLS `DrawingIndex.check_fresh()` and the gated accessors.
+- **Setup actually used (Windows 11, Python 3.12.6, no new dependencies):**
+
+```powershell
+python tools\ocs\drawing_index.py index --file <drawing.dxf> --json idx.json
+# key (choose one; never the command line, never git):
+#   $env:OPENROUTER_API_KEY = "<key>"
+#   or copy tools\ocs\.env.example to .env at the repository root
+python tools\ocs\drawing_qa.py ask --index idx.json --question "How many circles?"
+python tools\ocs\drawing_qa.py excerpt --index idx.json --question "..."   # what WOULD be sent
+```
+
+- **Exact test commands and results (this session, 2026-11-18):**
+
+```
+$ python tools\ocs\test_drawing_qa.py       → PASS, 40/40 checks (unit 35/35, real binary 4/4, real model 0/0 + 1 SKIP-honest), exit 0 — the post-review-round-3 run (neutral parse failure without echoing response content + dotted-layer path resolution); the post-round-2 suite was 38/38, post-round-1 36/36 (the pre-fix suite 31/31), and the os error 1175 flake hit the R2/R3 smoke subprocess on three earlier attempts that day (re-run remedy, no auto-retry by design)
+$ python tools\ocs\ocs_smoke_test.py        → 15/15 steps PASS, exit 0 (one earlier run hit the documented os error 1175 save flake; passed on re-run, no retry added by design)
+$ python tools\ocs\test_drawing_index.py    → 23/23 checks PASS (unit 12/12, real 11/11, 0 skips), exit 0 (same flake hit R5/R9 on two earlier attempts, a different save each time; passed on re-run)
+$ python tools\ocs\test_safe_workdir.py     → 6/6 checks passed, exit 0
+$ python tools\ocs\test_stale_revision.py   → 4/4 checks passed, exit 0
+```
+
+- **Mocked vs real — read this before trusting "tests pass":** U1–U35 are
+  MOCKED model calls (`FakeClient` with canned JSON; prove the pipeline).
+  R1–R4 use the REAL pinned OCS binary for index building/staleness but a
+  FAKE model. **M1 is the only REAL OpenRouter call and it did NOT run in
+  this session: `OPENROUTER_API_KEY` was not set on this machine when the
+  branch was prepared.** The suite reported:
+  `REAL-MODEL INTEGRATION: NOT VERIFIED (SKIP)`. To produce real evidence
+  (costs observed, model behavior, Arabic reply quality):
+
+```powershell
+$env:OPENROUTER_API_KEY = "<key>"
+python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25
+# one Arabic question (كم عدد العناصر في هذا الرسم؟), max_tokens=300,
+# usage log at tools/ocs/out/openrouter_usage.jsonl
+```
+
+- **Costs actually observed so far: NONE.** No key was available in this
+  session, so zero paid calls were made preparing this branch. The default
+  cap is the PLAN.md initial $5.00 evaluation budget; the suite's M1 with
+  `--spend-cap-usd 0.25` bounds a single verification run to at most the
+  cost of one small call. Per-call cost is taken from OpenRouter's own
+  `usage.cost` (`usage: {"include": true}`); when a provider/model reports
+  no cost, the call is logged with `cost_usd: null` and the operator should
+  reconcile against the OpenRouter dashboard — the cap cannot count
+  unreported spend (documented limitation).
+- **What Codex should review (highest value first):**
+  1. `answer_question()` gate ordering and the refusal statuses (is the
+     two-gate contract airtight? is "refused_stale after the model call"
+     surfaced correctly?).
+  2. Citation validation strictness: `_validate_citations`,
+     `_validate_intent_binding`, `_validate_numbers_general` — can a wrong
+     answer still slip through (e.g., a count answer that is numerically
+     true but structurally misinterpreted; numbers-within-handles
+     leniency)?
+  3. The classifier keyword lists (`classify`) — both false positives
+     (honest refusal instead of an answer, the safe failure mode) and
+     false negatives (unmapped → summary excerpt → one paid call).
+  4. The spend-cap semantics: refuse when tracked spend >= cap, where
+     tracked spend comes only from provider-reported cost. Is the
+     documented reconciliation limitation acceptable for the first slice?
+  5. `OpenRouterClient` error paths: redaction coverage, HTTP non-200
+     handling, `transport` injection seam for tests.
+  6. Prompt/excerpt hygiene: caveats forbid structural claims and units;
+     `classification: null` is visible to the model; path/sha withheld.
+- **Known limits of the 3A slice (documented, not hidden):** keyword
+  classifier (unsupported phrasing falls back to a capped summary excerpt
+  and one paid call); layer names containing dots defeat dotted fact-path
+  citations (the `layers.<name>` fallback covers the common case);
+  `idx.entities()` deep-copies all records before slicing (fixture scale
+  only); the cap counts only reported costs and is a post-call cumulative
+  stop — one call can exceed the remaining cap, a hard guarantee needs an
+  OpenRouter dashboard limit; M1 (real model) unverified in
+  this session; the Windows `os error 1175` save flake appeared ~once per
+  suite run today (documented environment issue, pre-existing, unrelated to
+  this code — it hits OCS's own save in milestone-1 tooling).
+- The GitHub repository is `https://github.com/yusef47/vibe-engineer`.
+  Pushes happen from the Windows laptop with the founder's own GitHub
+  authentication.
+
+## PR #4 review round 1 (Codex) — fixes on `feat/drawing-qa`
+
+Two review points, both fixed on the same branch with new regression tests
+(suite now 36/36: 31 unit + 4 real-binary + M1 SKIP-honest; the
+drawing-index regression suite is still 23/23):
+
+1. **Displayed claims are now bound to exact cited fields/values** (was:
+   citation-exists + number-exists-somewhere, which let a wrong sentence
+   through). Codex reproduced two failures on the six-entity fixture:
+   - "How many circles?" → model prose "There are 4 circles." citing
+     `entity_counts.by_type.Circle` (true value 1).
+   - "Summarize this drawing." → model prose "The drawing contains safe
+     reinforced columns." citing `entity_counts.total`.
+   Fix: the model's free wording is NEVER displayed. The displayed answer
+   is composed locally, in the question's language, from the validated
+   cited index values only — count/layer/handle/text intents render
+   deterministically from their facts; summary/unmapped intents render
+   exactly the cited fields (`entity_counts.total = 6`). The JSON contract
+   still requires `answerable`/`answer`/`citations` (the model's `answer`
+   is still produced and still number-validated, but it is not the
+   displayed text), and the evidence block now lists the cited fact paths
+   plus `answer_source: composed_from_cited_index_values`. Tests: U27
+   (repro 1: "Circle 1" displayed; "4 circles" and the model's wording
+   absent), U28 (repro 2: no safe/reinforced/column/structural/beam word
+   in the displayed text), plus tightened U1/U4/U5/U6 display assertions.
+2. **The spend cap is now CUMULATIVE and honestly labeled** (was: a fresh
+   CLI invocation reset tracked spend to $0 because each `ask` builds a
+   new client). Fix: the client seeds its tracked spend from the shared
+   usage log (the `--usage-log` default is now
+   `tools/ocs/out/openrouter_usage.jsonl`, so the gate spans CLI runs;
+   `--usage-log ""` disables logging and the cross-run gate, clearly
+   labeled per-run only). The cap stays a POST-call stop — a single call
+   can exceed the remaining cap because the cost is only known after the
+   call; the refusal message, the CLI `--help`, and the usage line all
+   state this and name the OpenRouter dashboard as the external hard
+   limit. Calls whose cost the provider does not report count as
+   zero-cost and are FLAGGED in the output; malformed usage-log lines are
+   skipped. Tests: U29 (three invocations share one log; the third is
+   refused before any request), U30 (unreported-cost flagging + malformed
+   lines skipped + a $0.00 cap refuses before sending), U31 (CLI help
+   honesty).
+
+- Adjacent one-line fix found while working in the same path: M1 crashed
+  with `float(None)` when run without `--spend-cap-usd` (the argparse
+  None was passed straight into the client); it now falls back to the
+  default cap.
+- Exact results this round: `python tools\ocs\test_drawing_qa.py` → PASS
+  36/36 (unit 31/31, real binary 4/4, M1 SKIP-honest), exit 0;
+  `python tools\ocs\test_drawing_index.py` → 23/23 PASS, exit 0. No real
+  model calls were made this round either (no key on this machine; costs
+  observed: none). With the cumulative cap, repeated real-model runs
+  accumulate in the default usage log; archive/rotate the file to reset.
+
+## PR #4 review round 2 (Codex) — fixes on `feat/drawing-qa`
+
+- Codex verified the round-1 fixes and reproduced two remaining
+  display/provenance gaps on `4cfe3ed`; both are fixed here with regression
+  tests (U32/U33), keeping the PR open for re-review (merge stays gated).
+- **Gap 1 — count answers displayed facts never cited.** Repro: "How many
+  entities are in this drawing?" with the model citing only
+  `entity_counts.total` still displayed Circle/Line/Text and layer counts,
+  while the evidence claimed composition "from cited values". Fix (the
+  evidence-reporting option): the deterministic count/layer/handle/text
+  renders are retained (per the round-1 endorsement), and the evidence block
+  now reports EVERY rendered field as `displayed_fact_paths` /
+  `displayed_handles` next to `cited_fact_paths` / `cited_handles`. The
+  inaccurate claim is gone: `answer_source` is now
+  `deterministic_from_index_facts` (count/layers/text/handle-with-record
+  renders) or `composed_from_cited_values` (summary/unmapped = exactly the
+  cited fields; the old string `composed_from_cited_index_values` was
+  removed). The refusal contract also changes: a cannot-answer now carries
+  `model_reason_code` (None when the model gives none) and
+  `citations_validated: false`. U32 pins the repro: every displayed path is
+  listed and resolves inside the excerpt facts.
+- **Gap 2 — model prose still displayed via the cannot-answer branch.**
+  Repro: `{"answerable": false, "reason": "This structure is unsafe and
+  requires reinforcement."}` was returned as `detail` and printed verbatim.
+  Fix: the displayed refusal text is now a LOCAL, neutral bilingual template
+  selected by the model's VALIDATED `reason_code` (`missing_facts` /
+  `question_unsupported`, with a neutral fallback when the code is missing
+  or unknown). The model's raw `reason` is never displayed (it stays in the
+  SYSTEM_PROMPT contract for debugging only, explicitly marked "not shown
+  to the user"). U33 pins the structural-hallucination refusal: no model
+  word reaches the display, and both reason codes plus the fallback are
+  exercised.
+- Doc updates: module docstring steps 7–8 and the model-facing caveat now
+  state the no-model-prose rule covers refusal reasons too and that
+  displayed fields are reported; `tools/ocs/README.md` rewords the
+  composition bullet and updates counts.
+- Exact results this round: `python tools\ocs\test_drawing_qa.py` → PASS
+  38/38 (unit 33/33, real binary 4/4, M1 SKIP-honest), exit 0;
+  `python tools\ocs\test_drawing_index.py` → 23/23 PASS, exit 0. No real
+  model calls (no key on this machine; costs observed: none). PR
+  description updated for the new counts, the displayed-fields reporting,
+  the local refusal messages, and the cumulative POST-call cap semantics
+  (no "bounds a run below the cap" claim; the dashboard stays the hard
+  limit).
+
+## PR #4 review round 3 (Codex) — fixes on `feat/drawing-qa`
+
+- Codex re-reviewed `4dc48c0` (round-2 fixes and the updated description
+  confirmed; 38/38 independently rerun) and reported two remaining edge
+  cases; both are fixed with regression tests U34/U35, keeping the PR open
+  for re-review (merge stays gated).
+- **Case 1 — malformed model output echoed the model's free wording through
+  the error path.** Repro: `FakeClient(raw="This structure is unsafe and
+  requires reinforcement.")` for a summary question returned
+  `model_failure` whose detail carried that whole sentence (and `cmd_ask`
+  prints the detail). Fix: `_parse_model_json` now raises a NEUTRAL
+  parse-failure message with NO response content ("the model response did
+  not contain a JSON object; the answer is discarded (response content is
+  not displayed)"). The malformed-JSON-with-braces branch keeps only the
+  `JSONDecodeError` position (its string never contains response content).
+  U34 pins the repro: no model word and no "output began" echo in the
+  displayed detail.
+- **Case 2 — dotted layer names broke displayed-path resolution.** Repro:
+  `_compose_count` emits `entity_counts.by_layer.A.B` for layer `A.B`, but
+  `_resolve_fact_path` returned `(False, None)`, so the U32 "every displayed
+  path resolves" check could not hold for such layers. Fix (the extend-
+  resolution option, mirroring the existing `layers.<rest>` fallback):
+  a failing dotted walk into `entity_counts.by_layer.<rest>` is retried
+  with the remainder as one literal key. `by_layer` values are counts,
+  never dicts, so the retry is unambiguous even when layers `A` and `A.B`
+  both exist. The SYSTEM_PROMPT now says a layer name containing dots is
+  cited as written, so the real model can produce resolvable citations.
+  U35 pins the exact repro snippet, the A/A.B unambiguity, the fail-closed
+  absent layer, the `layers.A.B` fallback, and an end-to-end count answer
+  over a dotted-layer fixture (cited `entity_counts.by_layer.A.B`, every
+  displayed path resolves).
+- Doc updates: `tools/ocs/README.md` (trust bullet gains the neutral parse
+  failure; the dotted-layer known-limit bullet now describes the retry
+  rule; counts 35 unit / U1–U35) and HANDOFF counts + this section.
+- Exact results this round: `python tools\ocs\test_drawing_qa.py` → PASS
+  40/40 (unit 35/35, real binary 4/4, M1 SKIP-honest), exit 0;
+  `python tools\ocs\test_drawing_index.py` → 23/23 PASS, exit 0. No real
+  model calls (no key on this machine; costs observed: none). Per the
+  review: the remaining separate gate after merge approval is a REAL
+  OpenRouter M1 run with a locally supplied key and actual cost evidence —
+  no key is ever shared in chat or committed.
+
+## PR #3 record (merged as `5d895d2` — history)
 
 - **Branch:** `feat/windows-local-ocs` — **PR #3: https://github.com/yusef47/vibe-engineer/pull/3** (tip: run `git rev-parse HEAD` on the branch — a commit cannot name itself; PR #3 opened with the full summary, exact results, provenance, limitations and review focus).
 - **What changed and why (all in `tools/ocs/` unless noted):**
@@ -110,8 +405,9 @@ $ python tools\ocs\test_stale_revision.py → 4/4 checks passed, exit 0
 - The GitHub repository is `https://github.com/yusef47/vibe-engineer`.
   Pushes now happen from the Windows laptop with the founder's own GitHub
   authentication; the Cloud Shell SSH deploy-key workflow is paused.
-- No AI model, OpenRouter key, or application framework has been added.
-  No structural classification is produced anywhere (every entity record
+- As of PR #3 (before milestone 3A): no AI model, OpenRouter key, or
+  application framework had been added. No structural classification is
+  produced anywhere (every entity record
   keeps `classification: null` until an engineer confirms labels).
 
 ## Milestone 2 — what works (verified against the real pinned binary)
@@ -326,13 +622,24 @@ locked/frozen layers not exercised; GUI (`--mcp`) still workstation-only.
 
 ## Next concrete task
 
-After Codex review/merge of `feat/windows-local-ocs`: milestone 3 — attach
-the conversation layer (OpenRouter model, per PLAN phase 3) to this index so
-answers cite index facts with their provenance (file, revision, handle), and
-the first bounded edit proposals flow through the existing `Serve.mutate()`
-rules (plan → review → one send → verify, stop on stale revision). Milestone
-3 is deliberately not started in this branch. Before that, optionally:
-extend the fixture set to more entity types (arc, polyline,
-insert-with-attributes — still synthetic) to widen index coverage, and
-engineer-confirmed classification as an explicit, separate data flow (never
-inferred from geometry/layer names).
+After Codex review of `feat/drawing-qa` (PR #4):
+
+1. **Real-model verification (founder, ~2 minutes, expect a few cents):**
+   set `OPENROUTER_API_KEY`, run
+   `python tools\ocs\test_drawing_qa.py --real-openrouter --spend-cap-usd 0.25`
+   (the cap is a cumulative POST-call stop, not a pre-call guarantee —
+   the OpenRouter dashboard limit is the hard bound),
+   then a few `drawing_qa.py ask` questions (Arabic count/layers/handle,
+   English text search, one missing-fact question). Record the model's
+   actual answers, token counts, and the costs OpenRouter reports into this
+   HANDOFF — that is the "costs observed" evidence this branch intentionally
+   does not fabricate. Compare `z-ai/glm-5.3-flash` vs `qwen/qwen3.8-flash`
+   (PLAN candidates) with `--model` before settling on a default.
+2. **Milestone 3B — the first bounded edit proposals:** proposals flow
+   through the existing `Serve.mutate()` rules only (plan → review → one
+   send → verify, stop on stale revision). The QA layer stays read-only;
+   the edit layer is a separate, reviewed module.
+3. Optional index widening before real files: extend the synthetic fixture
+   set to more entity types (arc, polyline, insert-with-attributes) and the
+   engineer-confirmed classification flow (explicit, separate data flow,
+   never inferred from geometry/layer names).

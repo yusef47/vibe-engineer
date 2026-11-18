@@ -15,10 +15,13 @@ verified on **both** environments: Google Cloud Shell (Linux AppImage,
 `results/…/2026-11-17_*`) and the Windows dev laptop (official portable exe,
 SHA-256-verified before first run, `results/…/2026-11-18_v2026.46_windows_local.md`;
 setup: `tools/ocs/setup.ps1`, reproduction commands in
-[tools/ocs/README.md](tools/ocs/README.md)). Making the Windows environment
-reproducible is on branch `feat/windows-local-ocs` (pending review). See
-[HANDOFF.md](HANDOFF.md) and [tools/ocs/README.md](tools/ocs/README.md). No
-AI model or OpenRouter key has been added yet.
+[tools/ocs/README.md](tools/ocs/README.md)). Windows-laptop reproducibility
+was merged in PR #3. The third milestone's first slice — 3A, a **read-only
+question-answering prototype** over the drawing index (Arabic/English
+questions, evidence-backed answers with validated citations, budget-capped
+OpenRouter model) — is open for review as **PR #4** on branch
+`feat/drawing-qa` (stop-before-merge, per the review gate). See
+[HANDOFF.md](HANDOFF.md) and [tools/ocs/README.md](tools/ocs/README.md).
 
 ## First technical milestone
 
