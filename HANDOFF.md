@@ -4,6 +4,29 @@ Updated: 2026-11-18 (Africa/Cairo)
 
 ## Current state
 
+- **Local GUI assistant bridge (2026-11-18, not merged):** The Windows
+  Vibe Engineer source fork now reconnects its right-side Assistant panel to
+  a loopback Python service. The companion repo has
+  `tools/ocs/assistant_service.py`, `test_assistant_service.py`, and
+  `ASSISTANT_SERVICE.md` on a local feature branch. The panel displays
+  conversation, service status, and structured source identity; its Change
+  Plan tab honestly remains inactive. The service reads the live GUI via
+  the same build's `--mcp`, using only nonlaunching session discovery and
+  state/query tools. Without a key it handles `/help`, `/summary`, and
+  `/entity HANDLE`; ordinary model questions explain the missing key with
+  zero provider requests. With a local OpenRouter key and an explicitly
+  chosen model, it routes supported read-only questions through the existing
+  validated `drawing_qa.py` path. No edit or structural-assessment tool is
+  exposed. The local source fork is not pushed to the upstream OCS remote.
+  Verification: 19/19 backend tests and Python compile passed; Rust binary
+  check/build passed; an actual GUI/MCP/TCP smoke on a blank `Drawing1`
+  returned a source-bound `/summary` with zero entities, `api_key:false`,
+  and cost 0. An official MCP window capture visually confirmed a clean
+  green connected status, no-key notice, enabled Send, and the right-side
+  Conversation/Sources/Change Plan tabs. A real OpenRouter response is still
+  unverified; the six-entity content check uses fake MCP/model. The private
+  parent-folder `start-vibe-engineer.ps1` starts the local editor and service
+  on demand without storing a key. See `tools/ocs/ASSISTANT_SERVICE.md`.
 - Product direction and execution gates are documented in `PLAN.md`.
 - **Milestone 1 (deterministic CAD integration smoke test) is complete and
   merged to `main` (PR #1).** All 15 steps pass against the real Open CAD
